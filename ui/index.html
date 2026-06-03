@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Qwen2.5 inference · Shiba Wang</title>
-<meta name="description" content="An OpenAI-compatible inference service serving Qwen2.5-7B on a scale-to-zero GPU. Built by Shiba Wang." />
+<title>Qwen Serve — Qwen2.5-7B inference · Shiba Wang</title>
+<meta name="description" content="Qwen Serve: an OpenAI-compatible inference service running Qwen2.5-7B (AWQ INT4) on a scale-to-zero GPU. Built by Shiba Wang." />
 <meta name="author" content="Shiba Wang" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191917'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='18' fill='%23fbfaf7' text-anchor='middle'%3EQ%3C/text%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191917'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23b15a39'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -29,7 +29,6 @@
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
-
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
@@ -42,67 +41,73 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     display: flex;
-    flex-direction: column;
     height: 100dvh;
   }
   ::selection { background: rgba(25, 25, 23, 0.1); }
+  a { color: inherit; }
 
-  /* ---------- header ---------- */
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 5;
+  /* ---------- sidebar ---------- */
+  .sidebar {
+    width: 304px;
+    flex: none;
+    border-right: 1px solid var(--line);
+    padding: 26px 24px 22px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 24px;
-    background: color-mix(in srgb, var(--bg) 80%, transparent);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.3s var(--ease);
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
   }
-  header.scrolled { border-bottom-color: var(--line); }
-  .wordmark { display: flex; align-items: baseline; gap: 9px; }
-  .wordmark .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); align-self: center; }
-  .wordmark b { font-family: var(--serif); font-weight: 500; font-size: 20px; letter-spacing: -0.01em; }
-  .wordmark span { color: var(--muted); font-size: 13px; }
-  .author { color: var(--muted); font-size: 13px; text-decoration: none; transition: color 0.18s var(--ease); }
-  .author:hover { color: var(--accent); }
-  .author .arr { font-size: 11px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent); flex: none; }
+  .brand-name { font-family: var(--serif); font-weight: 500; font-size: 21px; letter-spacing: -0.01em; line-height: 1.1; }
+  .brand-tag { color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .side-h { font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--faint); margin-bottom: 9px; }
+  .side-p { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.62; }
+  .side-suggest { display: flex; flex-direction: column; gap: 7px; }
+  .side-suggest button {
+    text-align: left; font-family: var(--sans); font-size: 13px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 11px;
+    padding: 9px 12px; cursor: pointer; line-height: 1.4;
+    transition: border-color 0.18s var(--ease), transform 0.18s var(--ease);
+  }
+  .side-suggest button:hover { border-color: var(--accent); transform: translateX(2px); }
+  .tech { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tech span { font-size: 11.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; }
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 3px; }
+  .side-foot .me { font-weight: 600; font-size: 14px; text-decoration: none; color: var(--text); }
+  .side-foot .me:hover { color: var(--accent); }
+  .side-foot .me-sub { font-size: 12.5px; color: var(--muted); text-decoration: none; }
+  .side-foot .me-sub:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-  /* ---------- thread ---------- */
+  /* ---------- main ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 15px 24px; flex: none;
+    border-bottom: 1px solid transparent; transition: border-color 0.3s var(--ease);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+  .topbar.scrolled { border-bottom-color: var(--line); }
+  .topbar-brand { display: none; align-items: center; gap: 9px; font-family: var(--serif); font-weight: 500; font-size: 18px; }
+  .topbar-brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; margin-left: auto; }
+  .live { width: 7px; height: 7px; border-radius: 50%; background: #4a9e6b; box-shadow: 0 0 0 3px rgba(74, 158, 107, 0.15); }
+
   .scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
   .scroll.is-empty { display: flex; align-items: center; }
-  .thread {
-    width: 100%;
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 28px 24px 8px;
-  }
+  .thread { width: 100%; max-width: 720px; margin: 0 auto; padding: 26px 24px 8px; }
 
   /* empty state */
-  .empty { text-align: center; padding: 24px 8px 40px; }
-  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 13px; }
-  .empty h1 {
-    font-family: var(--serif);
-    font-weight: 400;
-    font-size: clamp(29px, 5.5vw, 42px);
-    letter-spacing: -0.02em;
-    line-height: 1.08;
-    margin: 0 0 14px;
-  }
-  .empty p { color: var(--muted); margin: 0 auto 26px; max-width: 420px; font-size: 14.5px; }
+  .empty { text-align: center; padding: 20px 8px 36px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 13px; }
+  .empty h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(28px, 4.5vw, 40px); letter-spacing: -0.02em; line-height: 1.08; margin: 0 0 13px; }
+  .empty p { color: var(--muted); margin: 0 auto 24px; max-width: 440px; font-size: 14.5px; }
   .chips { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; }
   .chip {
-    font-family: var(--sans);
-    font-size: 13.5px;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    padding: 9px 15px;
-    cursor: pointer;
+    font-family: var(--sans); font-size: 13.5px; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px;
+    padding: 9px 15px; cursor: pointer;
     transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
   }
   .chip:hover { transform: translateY(-1px); border-color: var(--text); box-shadow: 0 4px 14px rgba(25, 25, 23, 0.06); }
@@ -111,56 +116,25 @@
   .msg { display: flex; flex-direction: column; margin: 0 0 18px; animation: rise 0.45s var(--ease) both; }
   .msg.user { align-items: flex-end; }
   .msg.assistant { align-items: flex-start; }
-  .bubble {
-    max-width: 90%;
-    padding: 12px 16px;
-    border-radius: 20px;
-    font-size: 15.5px;
-  }
-  .msg.user .bubble {
-    background: var(--user-bg);
-    color: var(--user-text);
-    border-bottom-right-radius: 7px;
-  }
-  .msg.assistant .bubble {
-    background: var(--assistant-bg);
-    color: var(--text);
-    border-bottom-left-radius: 7px;
-    max-width: 94%;
-  }
-  /* markdown inside assistant bubbles */
+  .bubble { max-width: 90%; padding: 12px 16px; border-radius: 20px; font-size: 15.5px; }
+  .msg.user .bubble { background: var(--user-bg); color: var(--user-text); border-bottom-right-radius: 7px; }
+  .msg.assistant .bubble { background: var(--assistant-bg); color: var(--text); border-bottom-left-radius: 7px; max-width: 94%; }
   .bubble > :first-child { margin-top: 0; }
   .bubble > :last-child { margin-bottom: 0; }
   .bubble p { margin: 0 0 10px; }
   .bubble ul, .bubble ol { margin: 0 0 10px; padding-left: 20px; }
   .bubble li { margin: 3px 0; }
-  .bubble code {
-    font-family: var(--mono);
-    font-size: 13px;
-    background: rgba(25, 25, 23, 0.06);
-    padding: 1px 5px;
-    border-radius: 5px;
-  }
-  .bubble pre {
-    background: #1b1b19;
-    color: #f2efe7;
-    padding: 13px 15px;
-    border-radius: 12px;
-    overflow-x: auto;
-    margin: 0 0 10px;
-  }
+  .bubble code { font-family: var(--mono); font-size: 13px; background: rgba(25, 25, 23, 0.06); padding: 1px 5px; border-radius: 5px; }
+  .bubble pre { background: #1b1b19; color: #f2efe7; padding: 13px 15px; border-radius: 12px; overflow-x: auto; margin: 0 0 10px; }
   .bubble pre code { background: none; padding: 0; font-size: 12.5px; color: inherit; }
   .bubble a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
   .meta { font-size: 11.5px; color: var(--faint); margin: 6px 2px 0; letter-spacing: 0.01em; }
 
-  /* thinking indicator */
+  /* thinking + loading */
   .dots { display: inline-flex; gap: 5px; align-items: center; height: 20px; }
   .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: breathe 1.3s var(--ease) infinite; }
   .dots i:nth-child(2) { animation-delay: 0.18s; }
   .dots i:nth-child(3) { animation-delay: 0.36s; }
-  .waking { color: var(--muted); font-size: 13.5px; margin-top: 9px; }
-
-  /* cold-start loading card */
   .loading { min-width: min(320px, 72vw); }
   .loading-head { display: flex; align-items: center; gap: 9px; font-weight: 500; }
   .loading-sub { color: var(--muted); font-size: 13px; margin: 7px 0 11px; }
@@ -168,119 +142,119 @@
   .bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.5s var(--ease); }
   .loading-stage { color: var(--faint); font-size: 12px; margin-top: 8px; }
   .spin { width: 15px; height: 15px; flex: none; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-
-  /* error */
   .err { color: #8a2b22; background: #f7eceb; border: 1px solid #eccfcb; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
 
-  /* ---------- composer ---------- */
-  .composer-wrap { padding: 10px 24px 22px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+  /* composer */
+  .composer-wrap { padding: 10px 24px 20px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
   .composer {
-    max-width: 720px;
-    margin: 0 auto;
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    background: var(--surface);
-    border: 1px solid var(--line-strong);
-    border-radius: 26px;
-    padding: 7px 7px 7px 18px;
-    box-shadow: 0 1px 2px rgba(25, 25, 23, 0.04);
+    max-width: 720px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 26px;
+    padding: 7px 7px 7px 18px; box-shadow: 0 1px 2px rgba(25, 25, 23, 0.04);
     transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
   }
   .composer:focus-within { border-color: var(--faint); box-shadow: 0 0 0 4px var(--ring); }
   textarea {
-    flex: 1;
-    border: none;
-    outline: none;
-    resize: none;
-    background: none;
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 15.5px;
-    line-height: 1.5;
-    padding: 9px 0;
-    max-height: 168px;
-    caret-color: var(--text);
+    flex: 1; border: none; outline: none; resize: none; background: none; color: var(--text);
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.5; padding: 9px 0; max-height: 168px; caret-color: var(--text);
   }
   textarea::placeholder { color: var(--faint); }
   .send {
-    flex: none;
-    width: 40px;
-    height: 40px;
-    border: none;
-    border-radius: 50%;
-    background: var(--text);
-    color: var(--bg);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    transition: transform 0.16s var(--ease), background 0.16s var(--ease), opacity 0.16s var(--ease);
+    flex: none; width: 40px; height: 40px; border: none; border-radius: 50%;
+    background: var(--text); color: var(--bg); cursor: pointer; display: grid; place-items: center;
+    transition: transform 0.16s var(--ease), background 0.16s var(--ease);
   }
   .send:hover:not(:disabled) { transform: scale(1.05); background: #34332f; }
   .send:active:not(:disabled) { transform: scale(0.95); }
   .send:disabled { background: #e7e3da; color: var(--faint); cursor: default; }
   .send svg { width: 19px; height: 19px; }
-
-  .foot { text-align: center; color: var(--faint); font-size: 12px; line-height: 1.9; margin: 10px auto 0; max-width: 720px; }
-  .foot a { color: var(--muted); text-decoration: none; transition: color 0.18s var(--ease); }
+  .foot { text-align: center; color: var(--faint); font-size: 12px; margin: 9px auto 0; max-width: 720px; }
+  .foot a { color: var(--muted); text-decoration: none; }
   .foot a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-  /* key field (only shown when the server requires a key and none is preset) */
   .keyrow { max-width: 720px; margin: 0 auto 10px; display: none; }
   .keyrow.show { display: block; }
-  .keyrow input {
-    width: 100%;
-    border: 1px solid var(--line-strong);
-    border-radius: 14px;
-    padding: 10px 14px;
-    font-family: var(--sans);
-    font-size: 13.5px;
-    background: var(--surface);
-    color: var(--text);
-    outline: none;
-  }
+  .keyrow input { width: 100%; border: 1px solid var(--line-strong); border-radius: 14px; padding: 10px 14px; font-family: var(--sans); font-size: 13.5px; background: var(--surface); color: var(--text); outline: none; }
   .keyrow input:focus { border-color: var(--text); box-shadow: 0 0 0 4px var(--ring); }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes breathe { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .topbar-brand { display: flex; }
+  }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; scroll-behavior: auto; }
   }
 </style>
 </head>
 <body>
-  <header id="header">
-    <div class="wordmark"><span class="dot"></span><b>Qwen2.5</b><span>inference</span></div>
-    <a class="author" href="https://shibawang.ca" target="_blank" rel="noopener">Shiba&nbsp;Wang <span class="arr">↗</span></a>
-  </header>
-
-  <div class="scroll is-empty" id="scroll">
-    <div class="thread" id="thread">
-      <div class="empty" id="empty">
-        <div class="eyebrow">By Shiba Wang</div>
-        <h1>Ask anything.</h1>
-        <p>A 7B open model served with vLLM on a scale-to-zero GPU. The first reply after idle takes a moment while the model wakes.</p>
-        <div class="chips" id="chips"></div>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div>
+        <div class="brand-name">Qwen&nbsp;Serve</div>
+        <div class="brand-tag">Production LLM inference</div>
       </div>
     </div>
-  </div>
 
-  <div class="composer-wrap">
-    <div class="keyrow" id="keyrow">
-      <input id="apikey" type="password" placeholder="API key" autocomplete="off" />
+    <div>
+      <div class="side-h">What this is</div>
+      <p class="side-p">An OpenAI-compatible API serving <b>Qwen2.5-7B</b> (4-bit AWQ) on a scale-to-zero NVIDIA L4 GPU. Chat below, or call it like the OpenAI API. Built to show an open model running in real production: containerized, autoscaling, monitored, shipped via CI/CD.</p>
     </div>
-    <div class="composer">
-      <textarea id="input" rows="1" placeholder="Message Qwen2.5" aria-label="Message"></textarea>
-      <button class="send" id="send" disabled aria-label="Send">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+
+    <div>
+      <div class="side-h">Try asking</div>
+      <div class="side-suggest" id="suggest"></div>
     </div>
-    <div class="foot">
-      <span id="model-tag">Qwen2.5-7B-Instruct</span> · OpenAI-compatible API · <a href="/docs">API</a><br />
-      Designed &amp; built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a> · <a href="mailto:s2259wan@uwaterloo.ca">s2259wan@uwaterloo.ca</a>
+
+    <div>
+      <div class="side-h">Built with</div>
+      <div class="tech">
+        <span>vLLM</span><span>FastAPI</span><span>Docker</span>
+        <span>GCP Cloud Run</span><span>L4 GPU</span><span>AWQ INT4</span><span>CI/CD</span>
+      </div>
     </div>
-  </div>
+
+    <div class="side-foot">
+      <div class="side-h">Built by</div>
+      <a class="me" href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang ↗</a>
+      <a class="me-sub" href="https://shibawang.ca" target="_blank" rel="noopener">shibawang.ca</a>
+      <a class="me-sub" href="mailto:s2259wan@uwaterloo.ca">s2259wan@uwaterloo.ca</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar" id="topbar">
+      <div class="topbar-brand"><span class="dot"></span>Qwen&nbsp;Serve</div>
+      <div class="status"><span class="live"></span><span id="model-tag">Qwen2.5-7B-Instruct</span></div>
+    </div>
+
+    <div class="scroll is-empty" id="scroll">
+      <div class="thread" id="thread">
+        <div class="empty" id="empty">
+          <div class="eyebrow">Qwen2.5-7B · OpenAI-compatible</div>
+          <h1>What can I help you with?</h1>
+          <p>Chat with Qwen2.5-7B running live on a scale-to-zero GPU. Pick a prompt, or type your own.</p>
+          <div class="chips" id="chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="keyrow" id="keyrow">
+        <input id="apikey" type="password" placeholder="API key" autocomplete="off" />
+      </div>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Message Qwen2.5" aria-label="Message"></textarea>
+        <button class="send" id="send" disabled aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="foot">Qwen2.5-7B-Instruct · OpenAI-compatible API · <a href="/docs">API docs</a> · built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a></div>
+    </div>
+  </main>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
@@ -288,12 +262,13 @@
     const $ = (id) => document.getElementById(id);
     const scrollEl = $("scroll"), threadEl = $("thread"), emptyEl = $("empty");
     const inputEl = $("input"), sendEl = $("send"), keyrowEl = $("keyrow"), keyEl = $("apikey");
-    const headerEl = $("header"), modelTag = $("model-tag");
+    const topbarEl = $("topbar"), modelTag = $("model-tag");
 
     const SUGGESTIONS = [
-      "Explain PagedAttention simply",
-      "Write a haiku about latency",
-      "Compare REST and gRPC",
+      "Explain PagedAttention in simple terms",
+      "Write a Python function to debounce calls",
+      "Tradeoffs of 4-bit quantizing an LLM?",
+      "Summarize REST vs gRPC in three bullets",
     ];
 
     const SEND = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -305,50 +280,44 @@
     let controller = null;
     let busy = false;
 
-    // ---- config: auto-use a demo key so visitors type nothing ----
     fetch("/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
       if (!cfg) return;
       if (cfg.model) { model = cfg.model; modelTag.textContent = cfg.model; }
       const stored = localStorage.getItem("apikey") || "";
       apiKey = stored || cfg.demo_key || "";
-      // only ask for a key if the server requires one and we don't have any
       if (cfg.auth_required && !apiKey) keyrowEl.classList.add("show");
       keyEl.value = stored;
     }).catch(() => {});
 
     keyEl.addEventListener("input", () => { apiKey = keyEl.value.trim(); localStorage.setItem("apikey", apiKey); });
 
-    // ---- suggestion chips ----
-    const chipsEl = $("chips");
+    // suggestions in both the sidebar and the empty state
+    const chipsEl = $("chips"), suggestEl = $("suggest");
     SUGGESTIONS.forEach((s) => {
-      const b = document.createElement("button");
-      b.className = "chip"; b.textContent = s;
-      b.onclick = () => { inputEl.value = s; autoGrow(); send(); };
-      chipsEl.appendChild(b);
+      const chip = document.createElement("button");
+      chip.className = "chip"; chip.textContent = s;
+      chip.onclick = () => { inputEl.value = s; autoGrow(); send(); };
+      chipsEl.appendChild(chip);
+      const side = document.createElement("button");
+      side.textContent = s;
+      side.onclick = () => { inputEl.value = s; autoGrow(); send(); };
+      suggestEl.appendChild(side);
     });
 
-    // ---- input behaviour ----
     function autoGrow() {
       inputEl.style.height = "auto";
       inputEl.style.height = Math.min(inputEl.scrollHeight, 168) + "px";
       sendEl.disabled = busy ? false : inputEl.value.trim() === "";
     }
     inputEl.addEventListener("input", autoGrow);
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-    });
+    inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
     sendEl.addEventListener("click", () => (busy ? stop() : send()));
-    scrollEl.addEventListener("scroll", () => headerEl.classList.toggle("scrolled", scrollEl.scrollTop > 4));
+    scrollEl.addEventListener("scroll", () => topbarEl.classList.toggle("scrolled", scrollEl.scrollTop > 4));
 
     function renderMarkdown(text) {
-      if (window.marked && window.DOMPurify) {
-        return window.DOMPurify.sanitize(window.marked.parse(text, { breaks: true }));
-      }
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
+      if (window.marked && window.DOMPurify) return window.DOMPurify.sanitize(window.marked.parse(text, { breaks: true }));
+      const div = document.createElement("div"); div.textContent = text; return div.innerHTML;
     }
-
     function nearBottom() { return scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 120; }
     function toBottom() { scrollEl.scrollTop = scrollEl.scrollHeight; }
 
@@ -363,18 +332,15 @@
       toBottom();
       return { wrap, bubble };
     }
-
     function setBusy(state) {
       busy = state;
       sendEl.innerHTML = state ? STOP : SEND;
       sendEl.setAttribute("aria-label", state ? "Stop" : "Send");
       sendEl.disabled = state ? false : inputEl.value.trim() === "";
     }
-
     function stop() { if (controller) controller.abort(); }
 
-    // Cold-start loading card: clear message + an estimated progress bar that
-    // fills over ~30s and snaps to done when the model is actually ready.
+    // Cold-start loading card: clear message + estimated progress bar.
     function startLoading(bubble) {
       bubble.innerHTML =
         '<div class="loading">' +
@@ -388,16 +354,9 @@
       const timer = setInterval(() => {
         const el = (performance.now() - t0) / 1000;
         if (fill) fill.style.width = Math.min(92, (el / 30) * 100).toFixed(0) + "%";
-        if (stage) {
-          stage.textContent =
-            el < 7 ? "Starting the GPU instance…" :
-            el < 20 ? "Loading model weights…" : "Almost ready, warming up…";
-        }
+        if (stage) stage.textContent = el < 7 ? "Starting the GPU instance…" : el < 20 ? "Loading model weights…" : "Almost ready, warming up…";
       }, 400);
-      return {
-        finish() { clearInterval(timer); if (fill) fill.style.width = "100%"; },
-        cancel() { clearInterval(timer); },
-      };
+      return { finish() { clearInterval(timer); if (fill) fill.style.width = "100%"; }, cancel() { clearInterval(timer); } };
     }
 
     async function send() {
@@ -420,11 +379,8 @@
       const body = JSON.stringify({ model, messages, stream: true });
 
       try {
-        // retry while the model is still cold-starting (gateway returns 503 model_loading)
         for (let attempt = 0; attempt < 16; attempt++) {
-          const resp = await fetch("/v1/chat/completions", {
-            method: "POST", headers, body, signal: controller.signal,
-          });
+          const resp = await fetch("/v1/chat/completions", { method: "POST", headers, body, signal: controller.signal });
 
           if (resp.status === 503) {
             if (!loader) loader = startLoading(bubble);
@@ -442,7 +398,6 @@
             return;
           }
 
-          // 200: model is ready, stream the answer
           if (loader) loader.finish();
           bubble.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
           const reader = resp.body.getReader();
@@ -472,7 +427,6 @@
               }
             }
           }
-
           if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(no response)"; }
           messages.push({ role: "assistant", content: answer });
           const total = Math.round(performance.now() - started);
@@ -485,8 +439,6 @@
           bubble.parentElement.appendChild(m);
           return;
         }
-
-        // ran out of retries
         if (loader) loader.cancel();
         bubble.innerHTML = '<div class="err"></div>';
         bubble.firstChild.textContent = "The model is taking longer than usual to wake up. Please try again in a moment.";
