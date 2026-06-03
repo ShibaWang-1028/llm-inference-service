@@ -31,26 +31,51 @@ def make_chart(summaries: list[dict]) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    labels = [s["config"] for s in summaries]
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8))
-    panels = [
-        ("Output tokens/sec (higher is better)", "output_tokens_per_s"),
-        ("p95 latency, seconds (lower is better)", "latency_p95_s"),
-        ("Cost per 1M tokens, USD (lower is better)", "cost_per_1m_tokens_usd"),
-        ("Model weights / peak GPU memory, GiB", "peak_gpu_mem_gib"),
-    ]
-    for ax, (title, key) in zip(axes.flat, panels, strict=False):
-        values = [(s.get(key) or 0) for s in summaries]
-        ax.bar(labels, values, color=["#9aa4b2", "#6f8fd6", "#4f8cff"][: len(labels)])
-        ax.set_title(title, fontsize=11)
-        ax.tick_params(axis="x", labelrotation=15)
-        for i, v in enumerate(values):
-            ax.text(i, v, f"{v:g}", ha="center", va="bottom", fontsize=9)
+    # Match the demo UI: warm off-white, ink text, terracotta accent. Bars go
+    # gray -> light terracotta -> accent, so "more optimized" reads as "more accent".
+    bg, ink, line = "#fbfaf7", "#191917", "#e3ded4"
+    color = {"baseline-hf-fp16": "#ccc7ba", "vllm-fp16": "#d98a5f", "vllm-awq": "#b15a39"}
+    nice = {"baseline-hf-fp16": "Baseline\nHF FP16", "vllm-fp16": "vLLM\nFP16", "vllm-awq": "vLLM\n+ AWQ"}
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
+            "figure.facecolor": bg,
+            "axes.facecolor": bg,
+            "text.color": ink,
+            "xtick.color": ink,
+        }
+    )
 
-    fig.suptitle("Qwen2.5-7B inference: baseline vs vLLM vs vLLM+AWQ", fontsize=13)
-    fig.tight_layout()
+    labels = [nice.get(s["config"], s["config"]) for s in summaries]
+    colors = [color.get(s["config"], "#999999") for s in summaries]
+    panels = [
+        ("Throughput, tokens/sec (higher is better)", "output_tokens_per_s", lambda v: f"{v:.0f}"),
+        ("p95 latency, seconds (lower is better)", "latency_p95_s", lambda v: f"{v:.1f}s"),
+        ("Cost, USD / 1M tokens (lower is better)", "cost_per_1m_tokens_usd", lambda v: f"${v:.2f}"),
+        ("Model weights, GiB (lower is better)", "peak_gpu_mem_gib", lambda v: f"{v:.1f}"),
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.4))
+    for ax, (title, key, fmt) in zip(axes.flat, panels, strict=False):
+        values = [(s.get(key) or 0) for s in summaries]
+        bars = ax.bar(labels, values, color=colors, width=0.6, zorder=3)
+        ax.set_title(title, fontsize=11.5, loc="left", pad=12, color=ink)
+        for side in ("top", "right", "left"):
+            ax.spines[side].set_visible(False)
+        ax.spines["bottom"].set_color(line)
+        ax.tick_params(length=0, labelsize=11)
+        ax.set_yticks([])
+        ax.margins(y=0.22)
+        for b, v in zip(bars, values, strict=True):
+            ax.text(b.get_x() + b.get_width() / 2, v, fmt(v), ha="center", va="bottom",
+                    fontsize=12, color=ink)
+
+    fig.suptitle("Qwen2.5-7B on one NVIDIA L4: baseline vs vLLM vs vLLM + AWQ",
+                 fontsize=15, y=0.99, color=ink)
+    fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=3.6, w_pad=3.0)
     out = RESULTS_DIR / "comparison.png"
-    fig.savefig(out, dpi=130)
+    fig.savefig(out, dpi=150, facecolor=bg)
     print(f"chart -> {out}")
 
 

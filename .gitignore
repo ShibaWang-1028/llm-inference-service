@@ -27,6 +27,7 @@ otel-collector.local.yaml
 # Benchmark output is generated; only the .gitkeep is tracked
 benchmarks/results/*.json
 benchmarks/results/*.png
+benchmarks/results/summary.md
 benchmarks/results/raw/
 
 # Local model cache

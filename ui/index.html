@@ -262,7 +262,7 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
-      <div class="foot">Qwen2.5-7B-Instruct · <a href="/docs">API docs</a> · <a href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener">GitHub</a> · built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a></div>
+      <div class="foot">Qwen2.5-7B-Instruct · <a href="https://llm-inference-2ieqajupeq-uc.a.run.app/docs" target="_blank" rel="noopener">API docs</a> · <a href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener">GitHub</a> · built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a></div>
     </div>
   </main>
 
@@ -289,8 +289,14 @@
     let apiKey = "";
     let controller = null;
     let busy = false;
+    // Served by the gateway itself (Cloud Run) -> same-origin. Hosted anywhere else
+    // (Netlify, shibawang.ca) -> call the Cloud Run service directly; CORS is enabled.
+    const API_BASE =
+      location.hostname.endsWith(".run.app") || location.hostname === "localhost" || location.protocol === "file:"
+        ? ""
+        : "https://llm-inference-2ieqajupeq-uc.a.run.app";
 
-    fetch("/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
+    fetch(API_BASE + "/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
       if (!cfg) return;
       if (cfg.model) { model = cfg.model; modelTag.textContent = cfg.model; }
       const stored = localStorage.getItem("apikey") || "";
@@ -390,7 +396,7 @@
 
       try {
         for (let attempt = 0; attempt < 16; attempt++) {
-          const resp = await fetch("/v1/chat/completions", { method: "POST", headers, body, signal: controller.signal });
+          const resp = await fetch(API_BASE + "/v1/chat/completions", { method: "POST", headers, body, signal: controller.signal });
 
           if (resp.status === 503) {
             if (!loader) loader = startLoading(bubble);

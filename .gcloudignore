@@ -1,0 +1,19 @@
+# What NOT to upload to Cloud Build. The Dockerfile only needs app/, ui/,
+# requirements-gateway.txt and deploy/, so keep the build context small.
+.git/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+.cache/
+models/
+benchmarks/results/
+.DS_Store
+.idea/
+.vscode/

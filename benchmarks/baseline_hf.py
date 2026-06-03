@@ -38,14 +38,16 @@ def load_model(model_id: str):
 
 def run_one(model, tok, prompt: str, max_tokens: int) -> RequestResult:
     messages = [{"role": "user", "content": prompt}]
-    inputs = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt").to(
-        model.device
-    )
-    prompt_tokens = int(inputs.shape[-1])
+    # transformers 5.x returns a dict (input_ids + attention_mask), not a bare tensor,
+    # so ask for the dict and feed it straight into generate.
+    enc = tok.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+    ).to(model.device)
+    prompt_tokens = int(enc["input_ids"].shape[-1])
 
     streamer = TextIteratorStreamer(tok, skip_prompt=True, skip_special_tokens=True)
     gen_kwargs = dict(
-        input_ids=inputs,
+        **enc,
         max_new_tokens=max_tokens,
         do_sample=False,
         streamer=streamer,

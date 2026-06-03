@@ -11,6 +11,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
@@ -68,6 +69,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             provider.shutdown()
 
     app = FastAPI(title="LLM Inference Gateway", version="0.1.0", lifespan=lifespan)
+    # Public demo API: allow browser calls from any origin (e.g. the UI hosted on
+    # Netlify). Auth is a bearer token, not cookies, so credentials stay off.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.limiter = limiter
     # slowapi's handler is typed for its own exception; mypy can't line it up
     # with Starlette's broader signature, but it works fine at runtime.

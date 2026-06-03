@@ -8,10 +8,11 @@ nobody is using it.
 
 Built by Shiba Wang. [shibawang.ca](https://shibawang.ca) · s2259wan@uwaterloo.ca
 
-**Live demo:** https://llm-inference-692806119236.us-central1.run.app
+**Live demo:** https://qwen-serve-shibawang.netlify.app
 
 Open it and start typing, no key needed. The first message after it has been idle takes about a
-minute while the GPU wakes up and loads the model. After that it is quick.
+minute while the GPU wakes up and loads the model. After that it is quick. The UI is static on
+Netlify and talks to the OpenAI-compatible API at `https://llm-inference-2ieqajupeq-uc.a.run.app`.
 
 ![chat UI](docs/img/ui.png)
 
@@ -90,14 +91,20 @@ applies once you upgrade), plus free Grafana Cloud and Langfuse accounts. Step-b
 
 ## Results
 
-Before/after benchmark across baseline (HuggingFace FP16), vLLM, and vLLM + AWQ on the same L4.
-Numbers and chart go here once the full run is done. See [docs/benchmarks.md](docs/benchmarks.md)
-for how it's measured.
+Before/after on the same NVIDIA L4, same prompt set. Baseline is plain HuggingFace FP16 (one
+request at a time), then vLLM (continuous batching), then vLLM + AWQ 4-bit.
 
-| Config | tokens/sec | p95 latency | GPU memory | $/1M tokens |
-|--------|-----------|-------------|------------|-------------|
-| Baseline (HF FP16) | TBD | TBD | TBD | TBD |
-| vLLM + AWQ INT4 | TBD | TBD | ~5.6 GB | TBD |
+| Config | tokens/sec | p95 latency | Model weights | $/1M tokens | GSM8K |
+|--------|-----------|-------------|---------------|-------------|-------|
+| Baseline (HF FP16) | 16.5 | 15.5s | 14.2 GB | $14.28 | - |
+| vLLM (FP16) | 233 | 15.5s | 14.3 GB | $1.01 | 80.0% |
+| **vLLM + AWQ INT4** | **556** | **6.6s** | **5.3 GB** | **$0.43** | **87.5%** |
+
+![benchmark](docs/img/benchmark.png)
+
+vLLM alone is about 14x the throughput of the naive baseline, just from continuous batching. AWQ on
+top roughly halves the latency, cuts the weights to about a third, and brings cost down ~33x, with no
+accuracy drop on GSM8K. Full method and commands in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Repo layout
 

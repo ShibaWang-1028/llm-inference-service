@@ -63,7 +63,7 @@ def ask(client: httpx.Client, model: str, question: str, max_tokens: int) -> str
 def load_gsm8k(n: int) -> list[tuple[str, str]]:
     from datasets import load_dataset
 
-    ds = load_dataset("gsm8k", "main", split="test")
+    ds = load_dataset("openai/gsm8k", "main", split="test")
     out = []
     for row in ds.select(range(min(n, len(ds)))):
         out.append((row["question"], row["answer"]))
