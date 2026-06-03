@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Qwen2.5 inference · Shiba Wang</title>
+<meta name="description" content="An OpenAI-compatible inference service serving Qwen2.5-7B on a scale-to-zero GPU. Built by Shiba Wang." />
+<meta name="author" content="Shiba Wang" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191917'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='18' fill='%23fbfaf7' text-anchor='middle'%3EQ%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --text: #191917;
+    --muted: #8c887e;
+    --faint: #b7b3a9;
+    --line: #ece9e1;
+    --line-strong: #ddd9cf;
+    --user-bg: #191917;
+    --user-text: #fbfaf7;
+    --assistant-bg: #f4f1ea;
+    --ring: rgba(25, 25, 23, 0.07);
+    --accent: #b15a39;
+    --serif: "Fraunces", Georgia, "Times New Roman", serif;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  ::selection { background: rgba(25, 25, 23, 0.1); }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.3s var(--ease);
+  }
+  header.scrolled { border-bottom-color: var(--line); }
+  .wordmark { display: flex; align-items: baseline; gap: 9px; }
+  .wordmark .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); align-self: center; }
+  .wordmark b { font-family: var(--serif); font-weight: 500; font-size: 20px; letter-spacing: -0.01em; }
+  .wordmark span { color: var(--muted); font-size: 13px; }
+  .author { color: var(--muted); font-size: 13px; text-decoration: none; transition: color 0.18s var(--ease); }
+  .author:hover { color: var(--accent); }
+  .author .arr { font-size: 11px; }
+
+  /* ---------- thread ---------- */
+  .scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+  .scroll.is-empty { display: flex; align-items: center; }
+  .thread {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 24px 8px;
+  }
+
+  /* empty state */
+  .empty { text-align: center; padding: 24px 8px 40px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); margin-bottom: 13px; }
+  .empty h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(29px, 5.5vw, 42px);
+    letter-spacing: -0.02em;
+    line-height: 1.08;
+    margin: 0 0 14px;
+  }
+  .empty p { color: var(--muted); margin: 0 auto 26px; max-width: 420px; font-size: 14.5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; }
+  .chip {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 9px 15px;
+    cursor: pointer;
+    transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  }
+  .chip:hover { transform: translateY(-1px); border-color: var(--text); box-shadow: 0 4px 14px rgba(25, 25, 23, 0.06); }
+
+  /* messages */
+  .msg { display: flex; flex-direction: column; margin: 0 0 18px; animation: rise 0.45s var(--ease) both; }
+  .msg.user { align-items: flex-end; }
+  .msg.assistant { align-items: flex-start; }
+  .bubble {
+    max-width: 90%;
+    padding: 12px 16px;
+    border-radius: 20px;
+    font-size: 15.5px;
+  }
+  .msg.user .bubble {
+    background: var(--user-bg);
+    color: var(--user-text);
+    border-bottom-right-radius: 7px;
+  }
+  .msg.assistant .bubble {
+    background: var(--assistant-bg);
+    color: var(--text);
+    border-bottom-left-radius: 7px;
+    max-width: 94%;
+  }
+  /* markdown inside assistant bubbles */
+  .bubble > :first-child { margin-top: 0; }
+  .bubble > :last-child { margin-bottom: 0; }
+  .bubble p { margin: 0 0 10px; }
+  .bubble ul, .bubble ol { margin: 0 0 10px; padding-left: 20px; }
+  .bubble li { margin: 3px 0; }
+  .bubble code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: rgba(25, 25, 23, 0.06);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+  .bubble pre {
+    background: #1b1b19;
+    color: #f2efe7;
+    padding: 13px 15px;
+    border-radius: 12px;
+    overflow-x: auto;
+    margin: 0 0 10px;
+  }
+  .bubble pre code { background: none; padding: 0; font-size: 12.5px; color: inherit; }
+  .bubble a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+  .meta { font-size: 11.5px; color: var(--faint); margin: 6px 2px 0; letter-spacing: 0.01em; }
+
+  /* thinking indicator */
+  .dots { display: inline-flex; gap: 5px; align-items: center; height: 20px; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: breathe 1.3s var(--ease) infinite; }
+  .dots i:nth-child(2) { animation-delay: 0.18s; }
+  .dots i:nth-child(3) { animation-delay: 0.36s; }
+  .waking { color: var(--muted); font-size: 13.5px; margin-top: 9px; }
+
+  /* error */
+  .err { color: #8a2b22; background: #f7eceb; border: 1px solid #eccfcb; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
+
+  /* ---------- composer ---------- */
+  .composer-wrap { padding: 10px 24px 22px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+  .composer {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 26px;
+    padding: 7px 7px 7px 18px;
+    box-shadow: 0 1px 2px rgba(25, 25, 23, 0.04);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .composer:focus-within { border-color: var(--faint); box-shadow: 0 0 0 4px var(--ring); }
+  textarea {
+    flex: 1;
+    border: none;
+    outline: none;
+    resize: none;
+    background: none;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.5;
+    padding: 9px 0;
+    max-height: 168px;
+    caret-color: var(--text);
+  }
+  textarea::placeholder { color: var(--faint); }
+  .send {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: var(--text);
+    color: var(--bg);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: transform 0.16s var(--ease), background 0.16s var(--ease), opacity 0.16s var(--ease);
+  }
+  .send:hover:not(:disabled) { transform: scale(1.05); background: #34332f; }
+  .send:active:not(:disabled) { transform: scale(0.95); }
+  .send:disabled { background: #e7e3da; color: var(--faint); cursor: default; }
+  .send svg { width: 19px; height: 19px; }
+
+  .foot { text-align: center; color: var(--faint); font-size: 12px; line-height: 1.9; margin: 10px auto 0; max-width: 720px; }
+  .foot a { color: var(--muted); text-decoration: none; transition: color 0.18s var(--ease); }
+  .foot a:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* key field (only shown when the server requires a key and none is preset) */
+  .keyrow { max-width: 720px; margin: 0 auto 10px; display: none; }
+  .keyrow.show { display: block; }
+  .keyrow input {
+    width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
+  .keyrow input:focus { border-color: var(--text); box-shadow: 0 0 0 4px var(--ring); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes breathe { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+  <header id="header">
+    <div class="wordmark"><span class="dot"></span><b>Qwen2.5</b><span>inference</span></div>
+    <a class="author" href="https://shibawang.ca" target="_blank" rel="noopener">Shiba&nbsp;Wang <span class="arr">↗</span></a>
+  </header>
+
+  <div class="scroll is-empty" id="scroll">
+    <div class="thread" id="thread">
+      <div class="empty" id="empty">
+        <div class="eyebrow">By Shiba Wang</div>
+        <h1>Ask anything.</h1>
+        <p>A 7B open model served with vLLM on a scale-to-zero GPU. The first reply after idle takes a moment while the model wakes.</p>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer-wrap">
+    <div class="keyrow" id="keyrow">
+      <input id="apikey" type="password" placeholder="API key" autocomplete="off" />
+    </div>
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Message Qwen2.5" aria-label="Message"></textarea>
+      <button class="send" id="send" disabled aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="foot">
+      <span id="model-tag">Qwen2.5-7B-Instruct</span> · OpenAI-compatible API · <a href="/docs">API</a><br />
+      Designed &amp; built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a> · <a href="mailto:s2259wan@uwaterloo.ca">s2259wan@uwaterloo.ca</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const scrollEl = $("scroll"), threadEl = $("thread"), emptyEl = $("empty");
+    const inputEl = $("input"), sendEl = $("send"), keyrowEl = $("keyrow"), keyEl = $("apikey");
+    const headerEl = $("header"), modelTag = $("model-tag");
+
+    const SUGGESTIONS = [
+      "Explain PagedAttention simply",
+      "Write a haiku about latency",
+      "Compare REST and gRPC",
+    ];
+
+    const SEND = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const STOP = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor"/></svg>';
+
+    const messages = [{ role: "system", content: "You are a helpful assistant." }];
+    let model = "Qwen2.5-7B-Instruct";
+    let apiKey = "";
+    let controller = null;
+    let busy = false;
+
+    // ---- config: auto-use a demo key so visitors type nothing ----
+    fetch("/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
+      if (!cfg) return;
+      if (cfg.model) { model = cfg.model; modelTag.textContent = cfg.model; }
+      const stored = localStorage.getItem("apikey") || "";
+      apiKey = stored || cfg.demo_key || "";
+      // only ask for a key if the server requires one and we don't have any
+      if (cfg.auth_required && !apiKey) keyrowEl.classList.add("show");
+      keyEl.value = stored;
+    }).catch(() => {});
+
+    keyEl.addEventListener("input", () => { apiKey = keyEl.value.trim(); localStorage.setItem("apikey", apiKey); });
+
+    // ---- suggestion chips ----
+    const chipsEl = $("chips");
+    SUGGESTIONS.forEach((s) => {
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = s;
+      b.onclick = () => { inputEl.value = s; autoGrow(); send(); };
+      chipsEl.appendChild(b);
+    });
+
+    // ---- input behaviour ----
+    function autoGrow() {
+      inputEl.style.height = "auto";
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 168) + "px";
+      sendEl.disabled = busy ? false : inputEl.value.trim() === "";
+    }
+    inputEl.addEventListener("input", autoGrow);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+    sendEl.addEventListener("click", () => (busy ? stop() : send()));
+    scrollEl.addEventListener("scroll", () => headerEl.classList.toggle("scrolled", scrollEl.scrollTop > 4));
+
+    function renderMarkdown(text) {
+      if (window.marked && window.DOMPurify) {
+        return window.DOMPurify.sanitize(window.marked.parse(text, { breaks: true }));
+      }
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function nearBottom() { return scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 120; }
+    function toBottom() { scrollEl.scrollTop = scrollEl.scrollHeight; }
+
+    function addMessage(role) {
+      if (emptyEl) { emptyEl.remove(); scrollEl.classList.remove("is-empty"); }
+      const wrap = document.createElement("div");
+      wrap.className = "msg " + role;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      wrap.appendChild(bubble);
+      threadEl.appendChild(wrap);
+      toBottom();
+      return { wrap, bubble };
+    }
+
+    function setBusy(state) {
+      busy = state;
+      sendEl.innerHTML = state ? STOP : SEND;
+      sendEl.setAttribute("aria-label", state ? "Stop" : "Send");
+      sendEl.disabled = state ? false : inputEl.value.trim() === "";
+    }
+
+    function stop() { if (controller) controller.abort(); }
+
+    async function send() {
+      const text = inputEl.value.trim();
+      if (!text || busy) return;
+      inputEl.value = ""; autoGrow();
+
+      messages.push({ role: "user", content: text });
+      addMessage("user").bubble.textContent = text;
+
+      const { bubble } = addMessage("assistant");
+      bubble.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
+      const wakeTimer = setTimeout(() => {
+        if (bubble.querySelector(".dots")) {
+          const w = document.createElement("div");
+          w.className = "waking";
+          w.textContent = "Waking the model. The first reply after idle can take up to a minute.";
+          bubble.appendChild(w);
+        }
+      }, 4500);
+
+      setBusy(true);
+      controller = new AbortController();
+      const started = performance.now();
+      let firstAt = null, answer = "", usage = null;
+
+      try {
+        const headers = { "Content-Type": "application/json" };
+        if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+        const resp = await fetch("/v1/chat/completions", {
+          method: "POST", headers, signal: controller.signal,
+          body: JSON.stringify({ model, messages, stream: true }),
+        });
+
+        if (!resp.ok) {
+          clearTimeout(wakeTimer);
+          const t = await resp.text();
+          let detail = t;
+          try { detail = JSON.parse(t).error?.message || t; } catch (e) {}
+          bubble.innerHTML = '<div class="err"></div>';
+          bubble.firstChild.textContent = "Error " + resp.status + ": " + detail.slice(0, 200);
+          messages.pop();
+          return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "", done = false;
+        while (!done) {
+          const { value, done: d } = await reader.read();
+          if (d) break;
+          buffer += decoder.decode(value, { stream: true });
+          let i;
+          while ((i = buffer.indexOf("\n\n")) >= 0) {
+            const event = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+            for (const line of event.split("\n")) {
+              const s = line.trim();
+              if (!s.startsWith("data:")) continue;
+              const data = s.slice(5).trim();
+              if (data === "[DONE]") { done = true; continue; }
+              let obj; try { obj = JSON.parse(data); } catch (e) { continue; }
+              const delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+              if (delta && delta.content) {
+                if (firstAt === null) { firstAt = performance.now(); clearTimeout(wakeTimer); }
+                answer += delta.content;
+                bubble.innerHTML = renderMarkdown(answer);
+                if (nearBottom()) toBottom();
+              }
+              if (obj.usage) usage = obj.usage;
+            }
+          }
+        }
+
+        if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(no response)"; }
+        messages.push({ role: "assistant", content: answer });
+
+        const total = Math.round(performance.now() - started);
+        const ttft = firstAt ? Math.round(firstAt - started) : null;
+        let meta = (total / 1000).toFixed(1) + "s";
+        if (ttft !== null) meta += " · " + ttft + "ms to first token";
+        if (usage) meta += " · " + usage.completion_tokens + " tokens";
+        const m = document.createElement("div");
+        m.className = "meta"; m.textContent = meta;
+        bubble.parentElement.appendChild(m);
+      } catch (err) {
+        clearTimeout(wakeTimer);
+        if (err.name === "AbortError") {
+          if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(stopped)"; }
+          messages.push({ role: "assistant", content: answer });
+        } else {
+          bubble.innerHTML = '<div class="err"></div>';
+          bubble.firstChild.textContent = "Request failed: " + err;
+          messages.pop();
+        }
+      } finally {
+        clearTimeout(wakeTimer);
+        controller = null;
+        setBusy(false);
+        if (nearBottom()) toBottom();
+        inputEl.focus();
+      }
+    }
+  </script>
+</body>
+</html>

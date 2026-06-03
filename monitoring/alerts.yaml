@@ -1,0 +1,71 @@
+# Grafana alert rules (provisioning format) for the two required alerts:
+#   1. high p99 end-to-end latency
+#   2. KV-cache saturation (early OOM signal)
+#
+# Replace PROM_DS_UID with your Grafana Cloud Prometheus data source UID
+# (Grafana -> Connections -> Data sources -> your Prometheus -> the UID in the URL).
+# Then drop this file in Grafana's provisioning/alerting/ dir, or just recreate
+# the two rules in the UI using the expressions below (often easier on free tier).
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: llm-inference-alerts
+    folder: LLM Inference
+    interval: 1m
+    rules:
+      - uid: high-p99-latency
+        title: High p99 end-to-end latency
+        condition: threshold
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "vLLM p99 end-to-end latency is above the SLO for 5 minutes"
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PROM_DS_UID
+            model:
+              refId: query
+              editorMode: code
+              instant: true
+              expr: "histogram_quantile(0.99, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket[5m])))"
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: { type: gt, params: [10] } # seconds; tune to your SLO
+
+      - uid: kv-cache-saturation
+        title: KV-cache saturation
+        condition: threshold
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "vLLM KV-cache usage above 90% for 5 minutes (queueing/preemption imminent)"
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PROM_DS_UID
+            model:
+              refId: query
+              editorMode: code
+              instant: true
+              expr: "max(vllm:kv_cache_usage_perc)"
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: query
+              conditions:
+                - evaluator: { type: gt, params: [0.9] }

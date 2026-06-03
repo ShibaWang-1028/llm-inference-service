@@ -1,0 +1,10 @@
+# Dependencies for the benchmark scripts in benchmarks/.
+# These run on a GPU machine (the L4), NOT in the gateway image.
+# torch and vllm already ship inside the vllm/vllm-openai base image, so on the
+# benchmark box you mainly need the extras below.
+transformers>=4.45
+accelerate>=0.34
+datasets>=3.0
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.9

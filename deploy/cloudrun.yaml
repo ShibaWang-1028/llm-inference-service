@@ -1,0 +1,107 @@
+# Cloud Run service: vLLM + FastAPI gateway on 1x L4 GPU, scale-to-zero, with an
+# OpenTelemetry Collector sidecar that pushes metrics to Grafana Cloud.
+#
+# Deploy with:
+#   sed "s|IMAGE_PLACEHOLDER|$IMAGE|" deploy/cloudrun.yaml | \
+#     gcloud run services replace - --region=us-central1
+#
+# Prerequisites (see docs/setup-guide.md): the secrets gateway-api-key and
+# otel-collector-config must already exist in Secret Manager, and the L4 GPU
+# region/quota must be available.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llm-inference
+  labels:
+    cloud.googleapis.com/location: us-central1
+spec:
+  template:
+    metadata:
+      annotations:
+        # collector starts before app and stops after it (so /metrics is scraped to the end)
+        run.googleapis.com/container-dependencies: '{"app":["collector"]}'
+        autoscaling.knative.dev/minScale: "0" # scale to zero -> ~$0 when idle
+        autoscaling.knative.dev/maxScale: "3" # keep <= your L4 quota
+        run.googleapis.com/cpu-throttling: "false" # CPU always allocated (inference)
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true" # cheaper, best-effort failover
+    spec:
+      containerConcurrency: 4 # tune to one L4's batch capacity
+      timeoutSeconds: 300
+      nodeSelector:
+        run.googleapis.com/accelerator: nvidia-l4
+      containers:
+        # ---------------- ingress: gateway + vLLM + GPU ----------------
+        - name: app
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - name: http1
+              containerPort: 8080 # only the ingress container declares ports
+          resources:
+            limits:
+              cpu: "7"
+              memory: 28Gi
+              nvidia.com/gpu: "1"
+          env:
+            - name: MODEL_NAME
+              value: Qwen2.5-7B-Instruct
+            - name: RATE_LIMIT
+              value: 60/minute
+            - name: API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-api-key
+                  key: latest
+            # Public demo key the chat UI auto-uses (rate-limited per IP). Public
+            # by design, so a plain value is fine; set it to anything you like.
+            - name: DEMO_API_KEY
+              value: try-the-demo
+            # ---- Langfuse: flip to true and uncomment once the secrets exist ----
+            - name: ENABLE_LANGFUSE
+              value: "false"
+            # - name: LANGFUSE_PUBLIC_KEY
+            #   valueFrom:
+            #     secretKeyRef: { name: langfuse-public, key: latest }
+            # - name: LANGFUSE_SECRET_KEY
+            #   valueFrom:
+            #     secretKeyRef: { name: langfuse-secret, key: latest }
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 22 # ~220s budget for model load (under the 240s cap)
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+        # ---------------- sidecar: OpenTelemetry Collector ----------------
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.153.0
+          args: ["--config=/etc/otel/config.yaml"]
+          resources:
+            limits:
+              cpu: "1"
+              memory: 4Gi
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otel
+          startupProbe:
+            httpGet:
+              path: /
+              port: 13133 # health_check extension in otel-collector.yaml
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+      volumes:
+        - name: otel-config
+          secret:
+            secretName: otel-collector-config
+            items:
+              - key: latest
+                path: config.yaml

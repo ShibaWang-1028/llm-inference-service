@@ -1,0 +1,17 @@
+# Cloud Build config: build the GPU image server-side and push to Artifact
+# Registry. We build here rather than on the GitHub runner because the image
+# (CUDA + vLLM + ~5.6GB AWQ weights) is far too big for the runner's disk.
+#
+# Invoked from CI as:
+#   gcloud builds submit --config deploy/cloudbuild.yaml \
+#     --substitutions=_IMAGE=$IMAGE --region=$REGION .
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "deploy/Dockerfile", "-t", "${_IMAGE}", "."]
+images:
+  - "${_IMAGE}"
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 200
+timeout: 5400s

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Environment / secrets
+.env
+*.key
+*.json.key
+gcp-sa-key.json
+# filled-in collector config (contains the Grafana token) — keep only the template
+otel-collector.local.yaml
+
+# Benchmark output (charts are committed, raw runs are not)
+benchmarks/results/raw/
+
+# Local model cache
+.cache/
+models/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local-only, not published
+PRD.md

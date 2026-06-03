@@ -1,0 +1,55 @@
+# OpenTelemetry Collector config for the Cloud Run sidecar.
+#
+# Why a sidecar: the service scales to zero, so pull-based Prometheus scraping
+# can't reach it. The collector lives in the same instance, scrapes vLLM
+# (localhost:8000) and the gateway (localhost:8080) over the shared localhost,
+# and remote-writes to Grafana Cloud. The container-dependencies annotation in
+# cloudrun.yaml keeps the collector alive until the app has drained.
+#
+# SETUP: copy this file, fill in the three <PLACEHOLDERS> from your Grafana Cloud
+# stack (Connections -> Prometheus / "Sending metrics"), then store it as the
+# Secret Manager secret `otel-collector-config`. Do NOT commit the filled-in
+# version (it contains your token). The whole file is mounted from the secret,
+# so the credentials never live in plaintext in the service spec.
+
+extensions:
+  # backs the sidecar startup probe in cloudrun.yaml
+  health_check:
+    endpoint: 0.0.0.0:13133
+  basicauth/grafana:
+    client_auth:
+      username: "<GRAFANA_INSTANCE_ID>"   # numeric instance/user ID (not secret)
+      password: "<GRAFANA_CLOUD_TOKEN>"   # access-policy token with MetricsPublisher scope
+
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: vllm
+          scrape_interval: 15s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["localhost:8000"]
+        - job_name: gateway
+          scrape_interval: 15s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["localhost:8080"]
+
+processors:
+  batch:
+    timeout: 10s
+
+exporters:
+  prometheusremotewrite/grafana:
+    endpoint: "<GRAFANA_PROM_REMOTE_WRITE_URL>"  # e.g. https://prometheus-prod-NN-REGION.grafana.net/api/prom/push
+    auth:
+      authenticator: basicauth/grafana
+
+service:
+  extensions: [health_check, basicauth/grafana]
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheusremotewrite/grafana]
