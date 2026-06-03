@@ -108,6 +108,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         client = request.app.state.upstream
         tracker = request.app.state.tracker
 
+        # On a cold start the gateway is up before vLLM has loaded the model.
+        # Return a clean 503 (the UI shows it as "waking up") instead of erroring.
+        if not await inference.is_upstream_ready(client):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "message": "The model is starting up (cold start). Retry in a few seconds.",
+                        "type": "model_loading",
+                    }
+                },
+            )
+
         if payload.get("stream"):
             # Ask the upstream to include usage in the final SSE chunk so we can
             # record tokens/cost without breaking the passthrough.

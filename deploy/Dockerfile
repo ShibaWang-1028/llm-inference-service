@@ -33,6 +33,7 @@ ENV PORT=8080 \
     MAX_MODEL_LEN=16384 \
     GPU_MEMORY_UTILIZATION=0.90 \
     MAX_NUM_SEQS=64 \
+    ENFORCE_EAGER=1 \
     HF_HUB_OFFLINE=1
 
 COPY --from=gwdeps /opt/gw /opt/gw

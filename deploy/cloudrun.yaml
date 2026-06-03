@@ -67,12 +67,15 @@ spec:
             #   valueFrom:
             #     secretKeyRef: { name: langfuse-secret, key: latest }
           startupProbe:
+            # gate on the gateway being up (fast), not the model. Traffic flows in
+            # seconds so the page loads immediately; chat returns a 503 "loading"
+            # until vLLM is ready, which the UI shows as a "waking up" state.
             httpGet:
-              path: /health/ready
+              path: /health/live
               port: 8080
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 22 # ~220s budget for model load (under the 240s cap)
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
           livenessProbe:
             httpGet:
               path: /health/live

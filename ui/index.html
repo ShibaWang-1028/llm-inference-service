@@ -160,6 +160,15 @@
   .dots i:nth-child(3) { animation-delay: 0.36s; }
   .waking { color: var(--muted); font-size: 13.5px; margin-top: 9px; }
 
+  /* cold-start loading card */
+  .loading { min-width: min(320px, 72vw); }
+  .loading-head { display: flex; align-items: center; gap: 9px; font-weight: 500; }
+  .loading-sub { color: var(--muted); font-size: 13px; margin: 7px 0 11px; }
+  .bar { height: 5px; background: var(--line-strong); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.5s var(--ease); }
+  .loading-stage { color: var(--faint); font-size: 12px; margin-top: 8px; }
+  .spin { width: 15px; height: 15px; flex: none; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+
   /* error */
   .err { color: #8a2b22; background: #f7eceb; border: 1px solid #eccfcb; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
 
@@ -234,6 +243,7 @@
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes breathe { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; scroll-behavior: auto; }
   }
@@ -363,6 +373,33 @@
 
     function stop() { if (controller) controller.abort(); }
 
+    // Cold-start loading card: clear message + an estimated progress bar that
+    // fills over ~30s and snaps to done when the model is actually ready.
+    function startLoading(bubble) {
+      bubble.innerHTML =
+        '<div class="loading">' +
+        '<div class="loading-head"><span class="spin"></span><span>Waking up the model</span></div>' +
+        '<div class="loading-sub">First request after idle starts a GPU and loads Qwen2.5-7B. This usually takes 20-30 seconds.</div>' +
+        '<div class="bar"><div class="bar-fill"></div></div>' +
+        '<div class="loading-stage">Starting the GPU instance…</div>';
+      const fill = bubble.querySelector(".bar-fill");
+      const stage = bubble.querySelector(".loading-stage");
+      const t0 = performance.now();
+      const timer = setInterval(() => {
+        const el = (performance.now() - t0) / 1000;
+        if (fill) fill.style.width = Math.min(92, (el / 30) * 100).toFixed(0) + "%";
+        if (stage) {
+          stage.textContent =
+            el < 7 ? "Starting the GPU instance…" :
+            el < 20 ? "Loading model weights…" : "Almost ready, warming up…";
+        }
+      }, 400);
+      return {
+        finish() { clearInterval(timer); if (fill) fill.style.width = "100%"; },
+        cancel() { clearInterval(timer); },
+      };
+    }
+
     async function send() {
       const text = inputEl.value.trim();
       if (!text || busy) return;
@@ -370,83 +407,92 @@
 
       messages.push({ role: "user", content: text });
       addMessage("user").bubble.textContent = text;
-
       const { bubble } = addMessage("assistant");
       bubble.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
-      const wakeTimer = setTimeout(() => {
-        if (bubble.querySelector(".dots")) {
-          const w = document.createElement("div");
-          w.className = "waking";
-          w.textContent = "Waking the model. The first reply after idle can take up to a minute.";
-          bubble.appendChild(w);
-        }
-      }, 4500);
 
       setBusy(true);
       controller = new AbortController();
       const started = performance.now();
-      let firstAt = null, answer = "", usage = null;
+      let firstAt = null, answer = "", usage = null, loader = null;
+
+      const headers = { "Content-Type": "application/json" };
+      if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+      const body = JSON.stringify({ model, messages, stream: true });
 
       try {
-        const headers = { "Content-Type": "application/json" };
-        if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
-        const resp = await fetch("/v1/chat/completions", {
-          method: "POST", headers, signal: controller.signal,
-          body: JSON.stringify({ model, messages, stream: true }),
-        });
+        // retry while the model is still cold-starting (gateway returns 503 model_loading)
+        for (let attempt = 0; attempt < 16; attempt++) {
+          const resp = await fetch("/v1/chat/completions", {
+            method: "POST", headers, body, signal: controller.signal,
+          });
 
-        if (!resp.ok) {
-          clearTimeout(wakeTimer);
-          const t = await resp.text();
-          let detail = t;
-          try { detail = JSON.parse(t).error?.message || t; } catch (e) {}
-          bubble.innerHTML = '<div class="err"></div>';
-          bubble.firstChild.textContent = "Error " + resp.status + ": " + detail.slice(0, 200);
-          messages.pop();
+          if (resp.status === 503) {
+            if (!loader) loader = startLoading(bubble);
+            await new Promise((r) => setTimeout(r, 2500));
+            continue;
+          }
+          if (!resp.ok) {
+            if (loader) loader.cancel();
+            const t = await resp.text();
+            let detail = t;
+            try { detail = JSON.parse(t).error?.message || t; } catch (e) {}
+            bubble.innerHTML = '<div class="err"></div>';
+            bubble.firstChild.textContent = "Error " + resp.status + ": " + detail.slice(0, 200);
+            messages.pop();
+            return;
+          }
+
+          // 200: model is ready, stream the answer
+          if (loader) loader.finish();
+          bubble.innerHTML = '<div class="dots"><i></i><i></i><i></i></div>';
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "", done = false;
+          while (!done) {
+            const { value, done: d } = await reader.read();
+            if (d) break;
+            buffer += decoder.decode(value, { stream: true });
+            let i;
+            while ((i = buffer.indexOf("\n\n")) >= 0) {
+              const event = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+              for (const line of event.split("\n")) {
+                const s = line.trim();
+                if (!s.startsWith("data:")) continue;
+                const data = s.slice(5).trim();
+                if (data === "[DONE]") { done = true; continue; }
+                let obj; try { obj = JSON.parse(data); } catch (e) { continue; }
+                const delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+                if (delta && delta.content) {
+                  if (firstAt === null) firstAt = performance.now();
+                  answer += delta.content;
+                  bubble.innerHTML = renderMarkdown(answer);
+                  if (nearBottom()) toBottom();
+                }
+                if (obj.usage) usage = obj.usage;
+              }
+            }
+          }
+
+          if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(no response)"; }
+          messages.push({ role: "assistant", content: answer });
+          const total = Math.round(performance.now() - started);
+          const ttft = firstAt ? Math.round(firstAt - started) : null;
+          let meta = (total / 1000).toFixed(1) + "s";
+          if (ttft !== null) meta += " · " + ttft + "ms to first token";
+          if (usage) meta += " · " + usage.completion_tokens + " tokens";
+          const m = document.createElement("div");
+          m.className = "meta"; m.textContent = meta;
+          bubble.parentElement.appendChild(m);
           return;
         }
 
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "", done = false;
-        while (!done) {
-          const { value, done: d } = await reader.read();
-          if (d) break;
-          buffer += decoder.decode(value, { stream: true });
-          let i;
-          while ((i = buffer.indexOf("\n\n")) >= 0) {
-            const event = buffer.slice(0, i); buffer = buffer.slice(i + 2);
-            for (const line of event.split("\n")) {
-              const s = line.trim();
-              if (!s.startsWith("data:")) continue;
-              const data = s.slice(5).trim();
-              if (data === "[DONE]") { done = true; continue; }
-              let obj; try { obj = JSON.parse(data); } catch (e) { continue; }
-              const delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
-              if (delta && delta.content) {
-                if (firstAt === null) { firstAt = performance.now(); clearTimeout(wakeTimer); }
-                answer += delta.content;
-                bubble.innerHTML = renderMarkdown(answer);
-                if (nearBottom()) toBottom();
-              }
-              if (obj.usage) usage = obj.usage;
-            }
-          }
-        }
-
-        if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(no response)"; }
-        messages.push({ role: "assistant", content: answer });
-
-        const total = Math.round(performance.now() - started);
-        const ttft = firstAt ? Math.round(firstAt - started) : null;
-        let meta = (total / 1000).toFixed(1) + "s";
-        if (ttft !== null) meta += " · " + ttft + "ms to first token";
-        if (usage) meta += " · " + usage.completion_tokens + " tokens";
-        const m = document.createElement("div");
-        m.className = "meta"; m.textContent = meta;
-        bubble.parentElement.appendChild(m);
+        // ran out of retries
+        if (loader) loader.cancel();
+        bubble.innerHTML = '<div class="err"></div>';
+        bubble.firstChild.textContent = "The model is taking longer than usual to wake up. Please try again in a moment.";
+        messages.pop();
       } catch (err) {
-        clearTimeout(wakeTimer);
+        if (loader) loader.cancel();
         if (err.name === "AbortError") {
           if (!answer) { bubble.innerHTML = ""; bubble.textContent = "(stopped)"; }
           messages.push({ role: "assistant", content: answer });
@@ -456,7 +502,6 @@
           messages.pop();
         }
       } finally {
-        clearTimeout(wakeTimer);
         controller = null;
         setBusy(false);
         if (nearBottom()) toBottom();

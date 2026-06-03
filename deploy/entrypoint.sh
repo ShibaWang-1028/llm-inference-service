@@ -18,7 +18,8 @@ python3 -m vllm.entrypoints.openai.api_server \
   --port "${VLLM_PORT}" \
   --max-model-len "${MAX_MODEL_LEN:-16384}" \
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.90}" \
-  --max-num-seqs "${MAX_NUM_SEQS:-64}" &
+  --max-num-seqs "${MAX_NUM_SEQS:-64}" \
+  ${ENFORCE_EAGER:+--enforce-eager} &
 
 echo "Starting gateway on 0.0.0.0:${PORT}"
 exec /opt/gw/bin/uvicorn app.main:app --app-dir /app --host 0.0.0.0 --port "${PORT}"
