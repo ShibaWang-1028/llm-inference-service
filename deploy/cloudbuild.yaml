@@ -12,7 +12,8 @@ steps:
 images:
   - "${_IMAGE}"
 options:
-  machineType: E2_HIGHCPU_32
+  # default machine (new projects lack quota for high-CPU build machines);
+  # slower but no special quota needed. bigger disk for the large CUDA image.
   diskSizeGb: 200
   logging: CLOUD_LOGGING_ONLY
 timeout: 5400s
