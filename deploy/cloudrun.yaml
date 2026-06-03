@@ -47,7 +47,7 @@ spec:
             - name: MODEL_NAME
               value: Qwen2.5-7B-Instruct
             - name: RATE_LIMIT
-              value: 60/minute
+              value: 1200/minute # high ceiling; cost is bounded by max-instances=1, not this
             - name: API_KEYS
               valueFrom:
                 secretKeyRef:
