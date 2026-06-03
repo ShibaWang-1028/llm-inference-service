@@ -34,9 +34,11 @@ jobs:
       - run: pytest -q
 
   # ---------------- main only: build the image ----------------
+  # The deploy stage stays dormant (and CI stays green) until the GCP_PROJECT_ID
+  # repo variable is set. Once you've done the cloud setup, it activates itself.
   build:
     needs: lint-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.GCP_PROJECT_ID != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
