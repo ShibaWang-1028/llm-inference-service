@@ -91,7 +91,11 @@
   .topbar.scrolled { border-bottom-color: var(--line); }
   .topbar-brand { display: none; align-items: center; gap: 9px; font-family: var(--serif); font-weight: 500; font-size: 18px; }
   .topbar-brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
-  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; margin-left: auto; }
+  .top-right { display: flex; align-items: center; gap: 15px; margin-left: auto; }
+  .gh { color: var(--muted); display: flex; transition: color 0.18s var(--ease); }
+  .gh:hover { color: var(--accent); }
+  .gh svg { display: block; }
+  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
   .live { width: 7px; height: 7px; border-radius: 50%; background: #4a9e6b; box-shadow: 0 0 0 3px rgba(74, 158, 107, 0.15); }
 
   .scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
@@ -222,13 +226,19 @@
       <a class="me" href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang ↗</a>
       <a class="me-sub" href="https://shibawang.ca" target="_blank" rel="noopener">shibawang.ca</a>
       <a class="me-sub" href="mailto:s2259wan@uwaterloo.ca">s2259wan@uwaterloo.ca</a>
+      <a class="me-sub" href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener">Source on GitHub ↗</a>
     </div>
   </aside>
 
   <main class="main">
     <div class="topbar" id="topbar">
       <div class="topbar-brand"><span class="dot"></span>Qwen&nbsp;Serve</div>
-      <div class="status"><span class="live"></span><span id="model-tag">Qwen2.5-7B-Instruct</span></div>
+      <div class="top-right">
+        <a class="gh" href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener" aria-label="Source on GitHub" title="Source on GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5A12 12 0 0 0 0 12.6c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.4 18 4.7 18 4.7c.7 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 24 12.6 12 12 0 0 0 12 .5Z"/></svg>
+        </a>
+        <div class="status"><span class="live"></span><span id="model-tag">Qwen2.5-7B-Instruct</span></div>
+      </div>
     </div>
 
     <div class="scroll is-empty" id="scroll">
@@ -252,7 +262,7 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
-      <div class="foot">Qwen2.5-7B-Instruct · OpenAI-compatible API · <a href="/docs">API docs</a> · built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a></div>
+      <div class="foot">Qwen2.5-7B-Instruct · <a href="/docs">API docs</a> · <a href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener">GitHub</a> · built by <a href="https://shibawang.ca" target="_blank" rel="noopener">Shiba Wang</a></div>
     </div>
   </main>
 
