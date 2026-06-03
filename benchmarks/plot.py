@@ -35,7 +35,11 @@ def make_chart(summaries: list[dict]) -> None:
     # gray -> light terracotta -> accent, so "more optimized" reads as "more accent".
     bg, ink, line = "#fbfaf7", "#191917", "#e3ded4"
     color = {"baseline-hf-fp16": "#ccc7ba", "vllm-fp16": "#d98a5f", "vllm-awq": "#b15a39"}
-    nice = {"baseline-hf-fp16": "Baseline\nHF FP16", "vllm-fp16": "vLLM\nFP16", "vllm-awq": "vLLM\n+ AWQ"}
+    nice = {
+        "baseline-hf-fp16": "Baseline\nHF FP16",
+        "vllm-fp16": "vLLM\nFP16",
+        "vllm-awq": "vLLM\n+ AWQ",
+    }
     plt.rcParams.update(
         {
             "font.family": "sans-serif",
@@ -52,7 +56,11 @@ def make_chart(summaries: list[dict]) -> None:
     panels = [
         ("Throughput, tokens/sec (higher is better)", "output_tokens_per_s", lambda v: f"{v:.0f}"),
         ("p95 latency, seconds (lower is better)", "latency_p95_s", lambda v: f"{v:.1f}s"),
-        ("Cost, USD / 1M tokens (lower is better)", "cost_per_1m_tokens_usd", lambda v: f"${v:.2f}"),
+        (
+            "Cost, USD / 1M tokens (lower is better)",
+            "cost_per_1m_tokens_usd",
+            lambda v: f"${v:.2f}",
+        ),
         ("Model weights, GiB (lower is better)", "peak_gpu_mem_gib", lambda v: f"{v:.1f}"),
     ]
 
@@ -68,11 +76,22 @@ def make_chart(summaries: list[dict]) -> None:
         ax.set_yticks([])
         ax.margins(y=0.22)
         for b, v in zip(bars, values, strict=True):
-            ax.text(b.get_x() + b.get_width() / 2, v, fmt(v), ha="center", va="bottom",
-                    fontsize=12, color=ink)
+            ax.text(
+                b.get_x() + b.get_width() / 2,
+                v,
+                fmt(v),
+                ha="center",
+                va="bottom",
+                fontsize=12,
+                color=ink,
+            )
 
-    fig.suptitle("Qwen2.5-7B on one NVIDIA L4: baseline vs vLLM vs vLLM + AWQ",
-                 fontsize=15, y=0.99, color=ink)
+    fig.suptitle(
+        "Qwen2.5-7B on one NVIDIA L4: baseline vs vLLM vs vLLM + AWQ",
+        fontsize=15,
+        y=0.99,
+        color=ink,
+    )
     fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=3.6, w_pad=3.0)
     out = RESULTS_DIR / "comparison.png"
     fig.savefig(out, dpi=150, facecolor=bg)
