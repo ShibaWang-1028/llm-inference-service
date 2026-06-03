@@ -21,7 +21,7 @@ env/
 *.key
 *.json.key
 gcp-sa-key.json
-# filled-in collector config (contains the Grafana token) — keep only the template
+# filled-in collector config (contains the Grafana token), keep only the template
 otel-collector.local.yaml
 
 # Benchmark output is generated; only the .gitkeep is tracked
