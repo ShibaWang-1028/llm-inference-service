@@ -24,7 +24,9 @@ gcp-sa-key.json
 # filled-in collector config (contains the Grafana token) — keep only the template
 otel-collector.local.yaml
 
-# Benchmark output (charts are committed, raw runs are not)
+# Benchmark output is generated; only the .gitkeep is tracked
+benchmarks/results/*.json
+benchmarks/results/*.png
 benchmarks/results/raw/
 
 # Local model cache
@@ -35,6 +37,3 @@ models/
 .vscode/
 .idea/
 .DS_Store
-
-# Local-only, not published
-PRD.md

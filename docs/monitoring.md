@@ -47,7 +47,7 @@ in your Prometheus data source UID) or recreate them in the UI with these expres
 histogram_quantile(0.99, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket[5m]))) > 10
 ```
 
-**KV-cache saturation** (`for: 5m`) — early OOM / preemption signal:
+**KV-cache saturation** (`for: 5m`), early OOM / preemption signal:
 ```promql
 max(vllm:kv_cache_usage_perc) > 0.9
 ```

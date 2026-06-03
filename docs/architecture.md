@@ -4,11 +4,11 @@
 
 One Cloud Run service runs three processes:
 
-- **vLLM** — Qwen2.5-7B-Instruct (AWQ INT4) behind vLLM's own OpenAI-compatible server, bound to
+- **vLLM**: Qwen2.5-7B-Instruct (AWQ INT4) behind vLLM's own OpenAI-compatible server, bound to
   `127.0.0.1:8000`. This is the actual inference engine: PagedAttention, continuous batching.
-- **FastAPI gateway** — the public face on `:8080`. Auth, rate limiting, request validation,
+- **FastAPI gateway**: the public face on `:8080`. Auth, rate limiting, request validation,
   gateway-level metrics, the demo UI, health probes. It proxies to vLLM.
-- **OpenTelemetry Collector** — a sidecar container that scrapes both `/metrics` endpoints and
+- **OpenTelemetry Collector**: a sidecar container that scrapes both `/metrics` endpoints and
   remote-writes to Grafana Cloud.
 
 ## Request flow
@@ -48,11 +48,11 @@ The cost is one extra in-process hop over localhost, which is negligible next to
 
 ## Components (`app/`)
 
-- `config.py` — settings from env / `.env` (pydantic-settings).
-- `schemas.py` — OpenAI-compatible request models, permissive (extra fields pass through).
-- `inference.py` — the proxy: streaming + non-streaming, TTFT and usage capture, readiness check.
-- `telemetry.py` — Prometheus gateway metrics, OpenTelemetry setup, the Langfuse tracker.
-- `main.py` — app factory, routes, auth dependency, rate limiter, UI, health probes.
+- `config.py`: settings from env / `.env` (pydantic-settings).
+- `schemas.py`: OpenAI-compatible request models, permissive (extra fields pass through).
+- `inference.py`: the proxy: streaming + non-streaming, TTFT and usage capture, readiness check.
+- `telemetry.py`: Prometheus gateway metrics, OpenTelemetry setup, the Langfuse tracker.
+- `main.py`: app factory, routes, auth dependency, rate limiter, UI, health probes.
 
 ## Security
 

@@ -1,8 +1,8 @@
-"""OpenAI-compatible request/response models.
+"""Request models for the OpenAI-compatible API.
 
-These are kept permissive (extra fields allowed) so the gateway stays compatible
-with the full OpenAI chat API while still validating the essentials: a model name
-and a non-empty list of messages.
+Kept permissive (extra fields allowed) so the gateway stays compatible with the
+full OpenAI chat API while still checking the essentials: a model name and a
+non-empty list of messages.
 """
 
 from typing import Any
@@ -32,39 +32,6 @@ class ChatCompletionRequest(BaseModel):
         if not v:
             raise ValueError("messages must not be empty")
         return v
-
-
-class Usage(BaseModel):
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-
-
-class ChatCompletionChoice(BaseModel):
-    index: int
-    message: ChatMessage
-    finish_reason: str | None = None
-
-
-class ChatCompletionResponse(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    id: str
-    object: str = "chat.completion"
-    created: int
-    model: str
-    choices: list[ChatCompletionChoice]
-    usage: Usage | None = None
-
-
-class ModelCard(BaseModel):
-    id: str
-    object: str = "model"
-    owned_by: str = "local"
-
-
-class ModelList(BaseModel):
-    object: str = "list"
-    data: list[ModelCard]
 
 
 class HealthResponse(BaseModel):

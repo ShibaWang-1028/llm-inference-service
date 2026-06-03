@@ -1,6 +1,6 @@
 # Benchmarks
 
-A reproducible before→after comparison across three configs on the **same NVIDIA L4 (24 GB)**:
+A reproducible before/after comparison across three configs on the **same NVIDIA L4 (24 GB)**:
 
 | Config | What changes |
 |--------|--------------|

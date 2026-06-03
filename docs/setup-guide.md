@@ -1,4 +1,4 @@
-# Setup guide — deploying this for real
+# Setup guide: deploying this for real
 
 This walks through every step that needs a human and an account. The code is done; this is the
 "get it live" part. Take it slow, do one part at a time. Anywhere you see `ALL_CAPS` in a command,
@@ -13,7 +13,7 @@ $300 credit (see Part 2).
 
 ---
 
-## Part 0 — Try it locally first (optional, 5 min)
+## Part 0: Try it locally first (optional, 5 min)
 
 Proves the app works before you touch any cloud.
 
@@ -28,7 +28,7 @@ Open http://localhost:8080 and chat (no key needed). Ctrl+C when done.
 
 ---
 
-## Part 1 — GitHub repo
+## Part 1: GitHub repo
 
 1. Create a new repo on GitHub named `llm-inference-service` (empty, no README).
 2. In this project, find-and-replace the placeholders:
@@ -47,7 +47,7 @@ Open http://localhost:8080 and chat (no key needed). Ctrl+C when done.
 
 ---
 
-## Part 2 — GCP project + billing (this is the one with the money caveat)
+## Part 2: GCP project + billing (this is the one with the money caveat)
 
 You can run all `gcloud` commands from [Cloud Shell](https://shell.cloud.google.com) (no install) or
 install the [gcloud CLI](https://cloud.google.com/sdk/docs/install) locally.
@@ -75,7 +75,7 @@ install the [gcloud CLI](https://cloud.google.com/sdk/docs/install) locally.
 
 ---
 
-## Part 3 — Keyless auth for GitHub Actions (Workload Identity Federation)
+## Part 3: Keyless auth for GitHub Actions (Workload Identity Federation)
 
 This lets the CI deploy to GCP without storing a long-lived key. Run these once (replace the repo).
 
@@ -111,17 +111,17 @@ Save that last printed string.
 
 ---
 
-## Part 4 — Secrets in Secret Manager
+## Part 4: Secrets in Secret Manager
 
 The Cloud Run runtime reads these. Create them now.
 
 ```bash
-# 1) Gateway API key — generate a random one and keep a copy
+# 1) Gateway API key: generate a random one and keep a copy
 GATEWAY_KEY=$(openssl rand -hex 24)
 echo "Your gateway API key (save it): $GATEWAY_KEY"
 printf '%s' "$GATEWAY_KEY" | gcloud secrets create gateway-api-key --data-file=-
 
-# 2) OTel collector config — fill it in after Part 5, then run:
+# 2) OTel collector config: fill it in after Part 5, then run:
 #    gcloud secrets create otel-collector-config --data-file=otel-collector.local.yaml
 
 # Let Cloud Run's runtime service account read the secrets:
@@ -134,7 +134,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ---
 
-## Part 5 — Grafana Cloud
+## Part 5: Grafana Cloud
 
 1. Sign up at [grafana.com](https://grafana.com) (free tier).
 2. In your stack: Connections → Prometheus (or "Sending metrics") → copy the **remote-write URL**,
@@ -157,7 +157,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ---
 
-## Part 6 — Langfuse (optional but recommended for the cost story)
+## Part 6: Langfuse (optional but recommended for the cost story)
 
 1. Sign up at [cloud.langfuse.com](https://cloud.langfuse.com), create a project, copy the public +
    secret keys.
@@ -173,7 +173,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 ---
 
-## Part 7 — GitHub repo variables and secrets
+## Part 7: GitHub repo variables and secrets
 
 In your repo → Settings → Secrets and variables → Actions:
 
@@ -185,7 +185,7 @@ In your repo → Settings → Secrets and variables → Actions:
 
 ---
 
-## Part 8 — Deploy
+## Part 8: Deploy
 
 Push to `main` (or re-run the latest Action). The pipeline will: build the image with Cloud Build,
 deploy to Cloud Run with the L4 GPU, smoke-test the live endpoint, and run the k6 gate.
@@ -205,7 +205,7 @@ Put that URL into `README.md` (`YOUR_SERVICE_URL`) and commit.
 
 ---
 
-## Part 9 — Verify
+## Part 9: Verify
 
 ```bash
 URL=https://YOUR_SERVICE_URL.run.app
@@ -222,7 +222,7 @@ move and a Langfuse trace shows tokens + cost.
 
 ---
 
-## Part 10 — Run the benchmarks (for the before→after table)
+## Part 10: Run the benchmarks (for the before/after table)
 
 The benchmarks need a GPU. Cheapest reliable way is a short-lived L4 VM:
 

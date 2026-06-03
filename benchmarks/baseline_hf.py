@@ -83,7 +83,7 @@ def main() -> None:
 
     prompts = [PROMPTS[i % len(PROMPTS)] for i in range(args.num_requests + args.warmup)]
 
-    # warmup (compiles kernels, fills caches) — not measured
+    # warmup (compiles kernels, fills caches), not measured
     for p in prompts[: args.warmup]:
         run_one(model, tok, p, args.max_tokens)
 

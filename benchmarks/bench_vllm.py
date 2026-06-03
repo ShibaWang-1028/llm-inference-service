@@ -82,14 +82,23 @@ async def one_request(
 
 
 async def run_load(
-    base_url: str, model: str, num_requests: int, concurrency: int, max_tokens: int, warmup: int
+    base_url: str,
+    model: str,
+    num_requests: int,
+    concurrency: int,
+    max_tokens: int,
+    warmup: int,
+    api_key: str = "",
 ) -> tuple[list[RequestResult], float]:
     prompts = [PROMPTS[i % len(PROMPTS)] for i in range(num_requests)]
     sem = asyncio.Semaphore(concurrency)
     limits = httpx.Limits(max_connections=concurrency * 2, max_keepalive_connections=concurrency)
     timeout = httpx.Timeout(300.0, connect=10.0)
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    async with httpx.AsyncClient(base_url=base_url, timeout=timeout, limits=limits) as client:
+    async with httpx.AsyncClient(
+        base_url=base_url, timeout=timeout, limits=limits, headers=headers
+    ) as client:
         # warmup, not measured
         await asyncio.gather(
             *(
@@ -122,6 +131,7 @@ def main() -> None:
     ap.add_argument(
         "--weights-gib", type=float, default=None, help="model weights GiB from vLLM log"
     )
+    ap.add_argument("--api-key", default="", help="bearer token if the endpoint needs auth")
     args = ap.parse_args()
 
     results, wall = asyncio.run(
@@ -132,6 +142,7 @@ def main() -> None:
             args.concurrency,
             args.max_tokens,
             args.warmup,
+            args.api_key,
         )
     )
 
