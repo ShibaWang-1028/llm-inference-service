@@ -19,7 +19,7 @@ RUN python3 -m venv /opt/gw \
 FROM base AS weights
 ARG MODEL_REPO=Qwen/Qwen2.5-7B-Instruct-AWQ
 ARG HF_TOKEN=""
-RUN HF_TOKEN="${HF_TOKEN}" huggingface-cli download "${MODEL_REPO}" --local-dir /models/qwen-awq
+RUN HF_TOKEN="${HF_TOKEN}" hf download "${MODEL_REPO}" --local-dir /models/qwen-awq
 
 # ---- final image ----
 FROM base
