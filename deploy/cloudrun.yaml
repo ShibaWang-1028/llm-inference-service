@@ -22,7 +22,7 @@ spec:
         # collector starts before app and stops after it (so /metrics is scraped to the end)
         run.googleapis.com/container-dependencies: '{"app":["collector"]}'
         autoscaling.knative.dev/minScale: "0" # scale to zero -> ~$0 when idle
-        autoscaling.knative.dev/maxScale: "3" # keep <= your L4 quota
+        autoscaling.knative.dev/maxScale: "1" # capped at 1 by default regional CPU/mem quota
         run.googleapis.com/cpu-throttling: "false" # CPU always allocated (inference)
         run.googleapis.com/startup-cpu-boost: "true"
         run.googleapis.com/gpu-zonal-redundancy-disabled: "true" # cheaper, best-effort failover
@@ -40,8 +40,8 @@ spec:
               containerPort: 8080 # only the ingress container declares ports
           resources:
             limits:
-              cpu: "7"
-              memory: 28Gi
+              cpu: "6"
+              memory: 24Gi
               nvidia.com/gpu: "1"
           env:
             - name: MODEL_NAME
@@ -86,8 +86,8 @@ spec:
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             limits:
-              cpu: "1"
-              memory: 4Gi
+              cpu: "2"
+              memory: 8Gi
           volumeMounts:
             - name: otel-config
               mountPath: /etc/otel
