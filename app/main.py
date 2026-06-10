@@ -5,9 +5,13 @@ limiting, gateway metrics, request validation, the demo UI, and health probes.
 The actual generation is proxied to the upstream vLLM server (see inference.py).
 """
 
+import asyncio
+import contextlib
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -34,6 +38,40 @@ logger = logging.getLogger("gateway")
 UI_FILE = Path(__file__).resolve().parent.parent / "ui" / "index.html"
 
 
+async def _warm_upstream(app: FastAPI) -> None:
+    """Wait for vLLM to load the model, then run one small completion before
+    reporting ready. The first inference JIT-compiles a few Triton kernels, so
+    without this the first visitor eats that latency spike; with it, "ready"
+    means the next reply is fast, not just that the weights are loaded. The
+    phase feeds /health/ready so the UI's wake-up screen can show real stages.
+    """
+    client: httpx.AsyncClient = app.state.upstream
+    settings: Settings = app.state.settings
+    t0: float = app.state.started_at
+    while not await inference.is_upstream_ready(client):
+        await asyncio.sleep(2.0)
+    loaded_s = time.monotonic() - t0
+    app.state.model_phase = "warming"
+    try:
+        await client.post(
+            inference.CHAT_PATH,
+            json={
+                "model": settings.model_name,
+                "messages": [{"role": "user", "content": "Reply with OK."}],
+                "max_tokens": 8,
+            },
+        )
+    except httpx.HTTPError as exc:  # never block readiness on the warmup
+        logger.warning("Warmup completion failed: %s", exc)
+    app.state.model_phase = "ready"
+    app.state.model_ready = True
+    logger.info(
+        "Cold start: model loaded %.1fs, warmed %.1fs after gateway start",
+        loaded_s,
+        time.monotonic() - t0,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level.upper())
@@ -56,12 +94,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.upstream_base_url, settings.request_timeout_s
         )
         app.state.tracker = LangfuseTracker(settings)
+        app.state.started_at = time.monotonic()
+        app.state.model_phase = "loading"
+        app.state.model_ready = False
+        app.state.warm_task = asyncio.create_task(_warm_upstream(app))
         if not settings.auth_enabled:
             logger.warning(
                 "API-key auth is DISABLED (no API_KEYS set). OK for local dev, not for prod."
             )
         yield
         # Flush observability before the instance goes away (matters on scale-to-zero).
+        app.state.warm_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await app.state.warm_task
         await app.state.upstream.aclose()
         app.state.tracker.flush()
         provider = getattr(app.state, "tracer_provider", None)
@@ -82,6 +127,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # with Starlette's broader signature, but it works fine at runtime.
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     setup_otel(app, settings)
+
+    async def model_ready(request: Request) -> bool:
+        """Ready = vLLM answers /health AND the one-off warmup completion ran.
+        Unit tests wire app.state by hand (no lifespan), so when the warmup
+        machinery is absent fall back to the plain upstream liveness check."""
+        state = request.app.state
+        live = await inference.is_upstream_ready(state.upstream)
+        warmed = getattr(state, "model_ready", None)
+        return live if warmed is None else (warmed and live)
+
+    def startup_status(request: Request) -> dict[str, Any]:
+        """Phase + uptime for the UI's wake-up screen; empty without lifespan."""
+        state = request.app.state
+        status: dict[str, Any] = {}
+        phase = getattr(state, "model_phase", None)
+        if phase is not None:
+            status["phase"] = phase
+        started = getattr(state, "started_at", None)
+        if started is not None:
+            status["uptime_s"] = round(time.monotonic() - started, 1)
+        return status
 
     async def require_api_key(request: Request) -> None:
         s: Settings = request.app.state.settings
@@ -119,13 +185,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # On a cold start the gateway is up before vLLM has loaded the model.
         # Return a clean 503 (the UI shows it as "waking up") instead of erroring.
-        if not await inference.is_upstream_ready(client):
+        if not await model_ready(request):
             return JSONResponse(
                 status_code=503,
                 content={
                     "error": {
                         "message": "The model is starting up (cold start). Retry in a few seconds.",
                         "type": "model_loading",
+                        **startup_status(request),
                     }
                 },
             )
@@ -168,10 +235,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health/ready")
     async def health_ready(request: Request):
-        ready = await inference.is_upstream_ready(request.app.state.upstream)
+        ready = await model_ready(request)
         return JSONResponse(
             status_code=200 if ready else 503,
-            content={"status": "ready" if ready else "not_ready"},
+            content={"status": "ready" if ready else "not_ready", **startup_status(request)},
         )
 
     # ---- Demo UI config ----

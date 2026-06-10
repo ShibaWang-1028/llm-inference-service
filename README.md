@@ -10,9 +10,11 @@ Built by Shiba Wang. [shibawang.ca](https://shibawang.ca) · s2259wan@uwaterloo.
 
 **Live demo:** https://qwen-serve-shibawang.netlify.app
 
-Open it and start typing, no key needed. The first message after it has been idle takes about a
-minute while the GPU wakes up and loads the model. After that it is quick. The UI is static on
-Netlify and talks to the OpenAI-compatible API at `https://llm-inference-2ieqajupeq-uc.a.run.app`.
+Open it and start typing, no key needed. The service scales to zero, so when it has been idle your
+visit wakes a GPU: the page shows a live wake-up screen with the real startup stages and unlocks
+chat the moment the model is loaded and warmed — usually about 2 minutes, up to 3 on a fully cold
+node. Once warm, replies stream immediately. The UI is static on Netlify and talks to the
+OpenAI-compatible API at `https://llm-inference-2ieqajupeq-uc.a.run.app`.
 
 ![chat UI](docs/img/ui.png)
 
@@ -26,7 +28,9 @@ Netlify and talks to the OpenAI-compatible API at `https://llm-inference-2ieqaju
     -d '{"model":"Qwen2.5-7B-Instruct","messages":[{"role":"user","content":"hi"}],"stream":true}'
   ```
 - Streaming (SSE) and non-streaming, API-key auth, rate limiting, health checks, Prometheus metrics.
-- Scale to zero on Cloud Run, so idle cost is roughly $0.
+- Scale to zero on Cloud Run, so idle cost is roughly $0. Cold starts are handled honestly: the UI
+  narrates the real stages from `/health/ready` (instance → model load → kernel warmup), and the
+  service reports ready only after a warmup completion, so the first real reply is fast.
 - Ships through GitHub Actions: lint, type-check, test, build, deploy, smoke test, and a k6
   load-test gate.
 

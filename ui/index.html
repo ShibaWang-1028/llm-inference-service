@@ -148,6 +148,20 @@
   .spin { width: 15px; height: 15px; flex: none; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
   .err { color: #8a2b22; background: #f7eceb; border: 1px solid #eccfcb; padding: 10px 14px; border-radius: 14px; font-size: 14px; }
 
+  /* wake-up gate (cold start) */
+  .live.warming { background: #d9982c; box-shadow: 0 0 0 3px rgba(217, 152, 44, 0.18); animation: glowPulse 1.5s ease-in-out infinite; }
+  @keyframes glowPulse { 50% { opacity: 0.5; } }
+  .wake {
+    max-width: 470px; margin: 0 auto 26px; text-align: left;
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 18px;
+    padding: 18px 20px 15px; box-shadow: 0 4px 18px rgba(25, 25, 23, 0.05);
+  }
+  .wake .bar { margin-top: 12px; }
+  .wake-row { display: flex; justify-content: space-between; gap: 12px; color: var(--faint); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .wake-tip { color: var(--muted); font-size: 12.5px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
+  .wake-tip a { color: var(--muted); }
+  .wake-tip a:hover { color: var(--accent); }
+
   /* composer */
   .composer-wrap { padding: 10px 24px 20px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
   .composer {
@@ -237,7 +251,7 @@
         <a class="gh" href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener" aria-label="Source on GitHub" title="Source on GitHub">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5A12 12 0 0 0 0 12.6c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.4 18 4.7 18 4.7c.7 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 24 12.6 12 12 0 0 0 12 .5Z"/></svg>
         </a>
-        <div class="status"><span class="live"></span><span id="model-tag">Qwen2.5-7B-Instruct</span></div>
+        <div class="status"><span class="live" id="dot"></span><span id="model-tag">Qwen2.5-7B-Instruct</span></div>
       </div>
     </div>
 
@@ -245,8 +259,15 @@
       <div class="thread" id="thread">
         <div class="empty" id="empty">
           <div class="eyebrow">Qwen2.5-7B · OpenAI-compatible</div>
-          <h1>What can I help you with?</h1>
-          <p>Chat with Qwen2.5-7B running live on a scale-to-zero GPU. Pick a prompt, or type your own.</p>
+          <h1 id="hero-title">What can I help you with?</h1>
+          <p id="hero-sub">Chat with Qwen2.5-7B running live on a scale-to-zero GPU. Pick a prompt, or type your own.</p>
+          <div class="wake" id="wake" hidden>
+            <div class="loading-head"><span class="spin"></span><span>Starting a GPU for you</span></div>
+            <div class="loading-sub">This demo runs on a real NVIDIA L4 that scales to zero when nobody is here, so an idle GPU costs nothing. Your visit just started one: the server boots, loads Qwen2.5-7B into GPU memory, then warms the kernels. Usually ready in about 2 minutes; a fully cold node can take 3.</div>
+            <div class="bar"><div class="bar-fill" id="wake-fill"></div></div>
+            <div class="wake-row"><span id="wake-stage">Requesting an L4 GPU from Cloud Run…</span><span id="wake-elapsed">0:00</span></div>
+            <div class="wake-tip">While it warms: <a href="https://github.com/ShibaWang-1028/llm-inference-service" target="_blank" rel="noopener">read how this service is built ↗</a> — vLLM, FastAPI, Cloud Run, full CI/CD.</div>
+          </div>
           <div class="chips" id="chips"></div>
         </div>
       </div>
@@ -287,8 +308,12 @@
     const messages = [{ role: "system", content: "You are a helpful assistant." }];
     let model = "Qwen2.5-7B-Instruct";
     let apiKey = "";
+    let authRequired = null; // unknown until /config answers
     let controller = null;
     let busy = false;
+    // Gate state: "checking" (first probe in flight), "waking" (cold start
+    // under way), "ready" (model loaded + warmed; chat unlocked).
+    let gateState = "checking";
     // Served by the gateway itself (Cloud Run) -> same-origin. Hosted anywhere else
     // (Netlify, shibawang.ca) -> call the Cloud Run service directly; CORS is enabled.
     const API_BASE =
@@ -296,34 +321,73 @@
         ? ""
         : "https://llm-inference-2ieqajupeq-uc.a.run.app";
 
-    fetch(API_BASE + "/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
-      if (!cfg) return;
-      if (cfg.model) { model = cfg.model; modelTag.textContent = cfg.model; }
-      const stored = localStorage.getItem("apikey") || "";
-      apiKey = stored || cfg.demo_key || "";
-      if (cfg.auth_required && !apiKey) keyrowEl.classList.add("show");
-      keyEl.value = stored;
-    }).catch(() => {});
+    // Observed cold starts: ~104s when the node already has the image cached,
+    // ~187s on a fully cold node. The progress bar paces against the typical case.
+    const WAKE_ESTIMATE_S = 130;
 
-    keyEl.addEventListener("input", () => { apiKey = keyEl.value.trim(); localStorage.setItem("apikey", apiKey); });
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // suggestions in both the sidebar and the empty state
+    async function loadConfig() {
+      // The first call can hang ~15s while Cloud Run starts an instance (that
+      // same request is part of what kicks off the wake), and it can fail
+      // outright mid cold start. Retry patiently; chat stays locked until the
+      // gate is ready, so the demo key is always in place before a send.
+      const delays = [2000, 5000, 10000, 20000];
+      for (let i = 0; ; i++) {
+        try {
+          const r = await fetch(API_BASE + "/config");
+          if (r.ok) {
+            const cfg = await r.json();
+            if (cfg.model) { model = cfg.model; modelTag.textContent = cfg.model; }
+            const stored = localStorage.getItem("apikey") || "";
+            apiKey = stored || cfg.demo_key || "";
+            authRequired = !!cfg.auth_required;
+            if (authRequired && !apiKey) keyrowEl.classList.add("show");
+            keyEl.value = stored;
+            updateComposer();
+            return;
+          }
+        } catch (e) { /* cold start or network blip; retry below */ }
+        await sleep(delays[Math.min(i, delays.length - 1)]);
+      }
+    }
+
+    keyEl.addEventListener("input", () => { apiKey = keyEl.value.trim(); localStorage.setItem("apikey", apiKey); updateComposer(); });
+
+    // suggestions in both the sidebar and the empty state; during the wake
+    // they fill the composer (send unlocks when the model is ready)
     const chipsEl = $("chips"), suggestEl = $("suggest");
     SUGGESTIONS.forEach((s) => {
+      const pick = () => { inputEl.value = s; autoGrow(); if (canSend() && inputEl.value.trim()) send(); else inputEl.focus(); };
       const chip = document.createElement("button");
       chip.className = "chip"; chip.textContent = s;
-      chip.onclick = () => { inputEl.value = s; autoGrow(); send(); };
+      chip.onclick = pick;
       chipsEl.appendChild(chip);
       const side = document.createElement("button");
       side.textContent = s;
-      side.onclick = () => { inputEl.value = s; autoGrow(); send(); };
+      side.onclick = pick;
       suggestEl.appendChild(side);
     });
 
+    function canSend() {
+      return gateState === "ready" && !busy && (!authRequired || !!apiKey);
+    }
+    function updateComposer() {
+      if (gateState === "waking") {
+        inputEl.placeholder = "Type while it wakes — sending unlocks when the model is ready";
+      } else if (gateState === "checking") {
+        inputEl.placeholder = "Checking whether the GPU is awake…";
+      } else if (authRequired && !apiKey) {
+        inputEl.placeholder = "Enter your API key above";
+      } else {
+        inputEl.placeholder = "Message Qwen2.5";
+      }
+      sendEl.disabled = busy ? false : (inputEl.value.trim() === "" || !canSend());
+    }
     function autoGrow() {
       inputEl.style.height = "auto";
       inputEl.style.height = Math.min(inputEl.scrollHeight, 168) + "px";
-      sendEl.disabled = busy ? false : inputEl.value.trim() === "";
+      updateComposer();
     }
     inputEl.addEventListener("input", autoGrow);
     inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -352,32 +416,135 @@
       busy = state;
       sendEl.innerHTML = state ? STOP : SEND;
       sendEl.setAttribute("aria-label", state ? "Stop" : "Send");
-      sendEl.disabled = state ? false : inputEl.value.trim() === "";
+      updateComposer();
     }
     function stop() { if (controller) controller.abort(); }
 
-    // Cold-start loading card: clear message + estimated progress bar.
-    function startLoading(bubble) {
+    // ---------- wake gate ----------
+    // The service scales to zero, so the first visit usually finds no GPU
+    // running. The probes below both trigger the wake and narrate its real
+    // stages (the gateway reports phase + uptime). Chat unlocks when the
+    // gateway says ready, which it only does once the model is loaded AND a
+    // warmup completion has run, so the first real reply is fast.
+
+    const wakeEl = $("wake"), wakeFill = $("wake-fill"), wakeStage = $("wake-stage"),
+          wakeElapsed = $("wake-elapsed"), heroTitle = $("hero-title"), heroSub = $("hero-sub"),
+          dotEl = $("dot");
+
+    function fmtSecs(s) {
+      const m = Math.floor(s / 60), r = Math.floor(s % 60);
+      return m + ":" + String(r).padStart(2, "0");
+    }
+
+    async function probeReady(timeoutMs) {
+      // While Cloud Run is still provisioning the instance it holds requests
+      // open, so cap each probe and read a timeout as "hardware on the way".
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), timeoutMs || 4000);
+      try {
+        const r = await fetch(API_BASE + "/health/ready", { signal: ctl.signal, cache: "no-store" });
+        let body = null;
+        try { body = await r.json(); } catch (e) {}
+        return { reachable: true, ok: r.ok, phase: body && body.phase, uptime: body && body.uptime_s };
+      } catch (e) {
+        return { reachable: false, ok: false };
+      } finally { clearTimeout(t); }
+    }
+
+    function wakeStageText(probe) {
+      if (!probe.reachable) return "Requesting an L4 GPU from Cloud Run…";
+      if (probe.phase === "warming") return "Model loaded — warming the inference kernels…";
+      if (probe.phase === "loading") return "Instance up — loading Qwen2.5-7B into GPU memory…";
+      if (probe.phase === "ready") return "Model went away — reconnecting…"; // gateway alive, vLLM not
+      return "Starting the server…";
+    }
+    function wakeUptime(probe) {
+      // Server uptime tracks the wake only while the model is actually
+      // starting; a gateway that outlived its vLLM would report instance age.
+      return (probe.phase === "loading" || probe.phase === "warming") && typeof probe.uptime === "number"
+        ? probe.uptime : 0;
+    }
+
+    async function runGate() {
+      const t0 = performance.now();
+      let lastUptime = 0;
+      let probe = await probeReady(3000);
+      if (probe.ok) { finishGate(null); return; }
+
+      gateState = "waking";
+      heroTitle.textContent = "Waking up the GPU";
+      heroSub.textContent = "";
+      wakeEl.hidden = false;
+      dotEl.classList.add("warming");
+      updateComposer();
+
+      const elapsed = () => Math.max((performance.now() - t0) / 1000, lastUptime);
+      const ticker = setInterval(() => {
+        const el = elapsed();
+        wakeElapsed.textContent = fmtSecs(el);
+        wakeFill.style.width = Math.min(96, (el / WAKE_ESTIMATE_S) * 100).toFixed(1) + "%";
+      }, 500);
+
+      while (!probe.ok) {
+        lastUptime = Math.max(lastUptime, wakeUptime(probe));
+        wakeStage.textContent = elapsed() > 480
+          ? "Much slower than normal — the region may be short on GPUs. Still trying…"
+          : wakeStageText(probe);
+        await sleep(2500);
+        probe = await probeReady(4000);
+      }
+
+      clearInterval(ticker);
+      wakeFill.style.width = "100%";
+      wakeStage.textContent = "Ready.";
+      await sleep(450);
+      finishGate(elapsed());
+    }
+
+    function finishGate(wokeInS) {
+      gateState = "ready";
+      dotEl.classList.remove("warming");
+      wakeEl.hidden = true;
+      heroTitle.textContent = "What can I help you with?";
+      heroSub.textContent = wokeInS
+        ? "The GPU is up and warmed — ready in " + fmtSecs(wokeInS) + ". Pick a prompt, or type your own."
+        : "Chat with Qwen2.5-7B running live on a scale-to-zero GPU. Pick a prompt, or type your own.";
+      updateComposer();
+      inputEl.focus();
+    }
+
+    // Mid-session cold start: Cloud Run can recycle the instance between
+    // messages. Same honest narration, inline in the reply bubble; the message
+    // is queued and resends itself.
+    function inlineWake(bubble) {
       bubble.innerHTML =
         '<div class="loading">' +
-        '<div class="loading-head"><span class="spin"></span><span>Waking up the model</span></div>' +
-        '<div class="loading-sub">First request after idle starts a GPU and loads Qwen2.5-7B. This usually takes 20-30 seconds.</div>' +
+        '<div class="loading-head"><span class="spin"></span><span>Waking the GPU back up</span></div>' +
+        '<div class="loading-sub">The instance scaled to zero while you were reading. Your message is queued and sends itself when the model is ready — usually about 2 minutes.</div>' +
         '<div class="bar"><div class="bar-fill"></div></div>' +
-        '<div class="loading-stage">Starting the GPU instance…</div>';
-      const fill = bubble.querySelector(".bar-fill");
-      const stage = bubble.querySelector(".loading-stage");
+        '<div class="wake-row"><span class="iw-stage">Requesting an L4 GPU from Cloud Run…</span><span class="iw-elapsed">0:00</span></div></div>';
+      const fill = bubble.querySelector(".bar-fill"), stage = bubble.querySelector(".iw-stage"), elapsedEl = bubble.querySelector(".iw-elapsed");
       const t0 = performance.now();
+      let lastUptime = 0;
+      const elapsed = () => Math.max((performance.now() - t0) / 1000, lastUptime);
       const timer = setInterval(() => {
-        const el = (performance.now() - t0) / 1000;
-        if (fill) fill.style.width = Math.min(92, (el / 30) * 100).toFixed(0) + "%";
-        if (stage) stage.textContent = el < 7 ? "Starting the GPU instance…" : el < 20 ? "Loading model weights…" : "Almost ready, warming up…";
-      }, 400);
-      return { finish() { clearInterval(timer); if (fill) fill.style.width = "100%"; }, cancel() { clearInterval(timer); } };
+        const el = elapsed();
+        if (fill) fill.style.width = Math.min(96, (el / WAKE_ESTIMATE_S) * 100).toFixed(1) + "%";
+        if (elapsedEl) elapsedEl.textContent = fmtSecs(el);
+      }, 500);
+      return {
+        update(probe) {
+          lastUptime = Math.max(lastUptime, wakeUptime(probe));
+          if (stage) stage.textContent = elapsed() > 480 ? "Much slower than normal — still trying…" : wakeStageText(probe);
+        },
+        finish() { clearInterval(timer); if (fill) fill.style.width = "100%"; },
+        cancel() { clearInterval(timer); },
+      };
     }
 
     async function send() {
       const text = inputEl.value.trim();
-      if (!text || busy) return;
+      if (!text || busy || !canSend()) { updateComposer(); return; }
       inputEl.value = ""; autoGrow();
 
       messages.push({ role: "user", content: text });
@@ -389,20 +556,54 @@
       controller = new AbortController();
       const started = performance.now();
       let firstAt = null, answer = "", usage = null, loader = null;
-
-      const headers = { "Content-Type": "application/json" };
-      if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
-      const body = JSON.stringify({ model, messages, stream: true });
+      let retriedAuth = false, wakeCycles = 0;
 
       try {
-        for (let attempt = 0; attempt < 16; attempt++) {
-          const resp = await fetch(API_BASE + "/v1/chat/completions", { method: "POST", headers, body, signal: controller.signal });
+        for (;;) {
+          const headers = { "Content-Type": "application/json" };
+          if (apiKey) headers["Authorization"] = "Bearer " + apiKey;
+          const resp = await fetch(API_BASE + "/v1/chat/completions", {
+            method: "POST", headers, body: JSON.stringify({ model, messages, stream: true }), signal: controller.signal,
+          });
 
           if (resp.status === 503) {
-            if (!loader) loader = startLoading(bubble);
-            await new Promise((r) => setTimeout(r, 2500));
+            // The instance scaled to zero (or is still warming): wait it out
+            // against /health/ready, then resend. Never bounce the visitor.
+            if (++wakeCycles > 3) {
+              bubble.innerHTML = '<div class="err"></div>';
+              bubble.firstChild.textContent = "The model keeps reporting not-ready. Please try again later.";
+              messages.pop();
+              return;
+            }
+            if (!loader) loader = inlineWake(bubble);
+            const waitT0 = performance.now();
+            let probe = { reachable: true, ok: false };
+            while (!probe.ok && (performance.now() - waitT0) / 1000 < 600) {
+              if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+              loader.update(probe);
+              await sleep(2500);
+              probe = await probeReady(4000);
+            }
+            if (!probe.ok) {
+              loader.cancel();
+              bubble.innerHTML = '<div class="err"></div>';
+              bubble.firstChild.textContent = "The GPU did not come up within 10 minutes — that is not normal. Please try again later, or email s2259wan@uwaterloo.ca.";
+              messages.pop();
+              return;
+            }
             continue;
           }
+
+          if (resp.status === 401 && !retriedAuth) {
+            // The demo key may have rotated since the page loaded: refresh once.
+            retriedAuth = true;
+            try {
+              const cfg = await (await fetch(API_BASE + "/config")).json();
+              apiKey = localStorage.getItem("apikey") || cfg.demo_key || "";
+            } catch (e) {}
+            continue;
+          }
+
           if (!resp.ok) {
             if (loader) loader.cancel();
             const t = await resp.text();
@@ -455,10 +656,6 @@
           bubble.parentElement.appendChild(m);
           return;
         }
-        if (loader) loader.cancel();
-        bubble.innerHTML = '<div class="err"></div>';
-        bubble.firstChild.textContent = "The model is taking longer than usual to wake up. Please try again in a moment.";
-        messages.pop();
       } catch (err) {
         if (loader) loader.cancel();
         if (err.name === "AbortError") {
@@ -476,6 +673,10 @@
         inputEl.focus();
       }
     }
+
+    updateComposer();
+    loadConfig();
+    runGate();
   </script>
 </body>
 </html>

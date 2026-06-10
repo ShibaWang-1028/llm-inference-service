@@ -1,11 +1,32 @@
 """Gateway API tests, run against the fake vLLM upstream."""
 
+import time
+
 import httpx
 
+from app.config import Settings
+from app.main import _warm_upstream, create_app
+from app.telemetry import LangfuseTracker
 from tests.conftest import AUTH
+from tools.fake_vllm import app as fake_app
 
 CHAT = "/v1/chat/completions"
 PROMPT = {"model": "Qwen2.5-7B-Instruct", "messages": [{"role": "user", "content": "hello there"}]}
+
+
+def _app_with_upstream(transport: httpx.AsyncBaseTransport):
+    """An app wired like production's lifespan (warmup state included), with
+    the upstream behind the given transport."""
+    settings = Settings(_env_file=None, api_keys="testkey")
+    app = create_app(settings)
+    app.state.settings = settings
+    app.state.upstream = httpx.AsyncClient(transport=transport, base_url="http://upstream")
+    app.state.tracker = LangfuseTracker(settings)
+    app.state.started_at = time.monotonic()
+    app.state.model_phase = "loading"
+    app.state.model_ready = False
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gateway")
+    return app, gw
 
 
 async def test_health_live(client: httpx.AsyncClient) -> None:
@@ -104,3 +125,48 @@ async def test_rate_limit(client_factory) -> None:
     codes = [(await c.post(CHAT, json=PROMPT, headers=AUTH)).status_code for _ in range(3)]
     assert codes[0] == 200
     assert codes[-1] == 429
+
+
+async def test_not_ready_when_upstream_down() -> None:
+    """vLLM unreachable (cold start): /health/ready is 503 with phase+uptime,
+    and chat returns the clean model_loading error instead of blowing up."""
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    app, gw = _app_with_upstream(httpx.MockTransport(refuse))
+    try:
+        r = await gw.get("/health/ready")
+        assert r.status_code == 503
+        body = r.json()
+        assert body["status"] == "not_ready"
+        assert body["phase"] == "loading"
+        assert body["uptime_s"] >= 0
+
+        chat = await gw.post(CHAT, json=PROMPT, headers=AUTH)
+        assert chat.status_code == 503
+        assert chat.json()["error"]["type"] == "model_loading"
+    finally:
+        await gw.aclose()
+        await app.state.upstream.aclose()
+
+
+async def test_ready_only_after_warmup() -> None:
+    """With vLLM live but the warmup not yet run, readiness stays 503;
+    _warm_upstream runs the warmup completion and flips it to ready."""
+    app, gw = _app_with_upstream(httpx.ASGITransport(app=fake_app))
+    try:
+        warming = await gw.get("/health/ready")
+        assert warming.status_code == 503
+        assert warming.json()["status"] == "not_ready"
+
+        await _warm_upstream(app)
+        assert app.state.model_ready is True
+        assert app.state.model_phase == "ready"
+
+        ready = await gw.get("/health/ready")
+        assert ready.status_code == 200
+        assert ready.json()["phase"] == "ready"
+    finally:
+        await gw.aclose()
+        await app.state.upstream.aclose()
