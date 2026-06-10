@@ -89,8 +89,12 @@ spec:
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             limits:
-              cpu: "2"
-              memory: 8Gi
+              # the collector idles around 150Mi; keep this small because
+              # per-instance memory counts against the project's
+              # run.googleapis.com/mem_allocation quota, and hitting that
+              # quota causes 429 "no available instance" brownouts
+              cpu: "1"
+              memory: 1Gi
           volumeMounts:
             - name: otel-config
               mountPath: /etc/otel
