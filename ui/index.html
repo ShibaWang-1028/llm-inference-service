@@ -314,12 +314,14 @@
     // Gate state: "checking" (first probe in flight), "waking" (cold start
     // under way), "ready" (model loaded + warmed; chat unlocked).
     let gateState = "checking";
-    // Served by the gateway itself (Cloud Run) -> same-origin. Hosted anywhere else
-    // (Netlify, shibawang.ca) -> call the Cloud Run service directly; CORS is enabled.
-    const API_BASE =
-      location.hostname.endsWith(".run.app") || location.hostname === "localhost" || location.protocol === "file:"
-        ? ""
-        : "https://llm-inference-2ieqajupeq-uc.a.run.app";
+    // Only the known public hosts of this UI (Netlify, shibawang.ca) call the
+    // Cloud Run service cross-origin. Everything else — the gateway's own
+    // origin, localhost dev, file://, editor preview panes — stays same-origin,
+    // so a stray render of this file can never wake (or keep alive) the
+    // production GPU.
+    const API_BASE = /(^|\.)qwen-serve-shibawang\.netlify\.app$|(^|\.)shibawang\.ca$/.test(location.hostname)
+      ? "https://llm-inference-2ieqajupeq-uc.a.run.app"
+      : "";
 
     // Observed cold starts: ~104s when the node already has the image cached,
     // ~187s on a fully cold node. The progress bar paces against the typical case.
